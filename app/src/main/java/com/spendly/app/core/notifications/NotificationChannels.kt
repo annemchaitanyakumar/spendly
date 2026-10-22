@@ -41,8 +41,11 @@ object ExpenseNotificationHelper {
     const val EXTRA_CANDIDATE_ID = "candidate_id"
     const val EXTRA_NOTIFICATION_ID = "notification_id"
 
+    const val LATEST_SPEND_NOTIFICATION_ID = 1001
+
     /**
-     * Post an enhanced, high-priority system status bar notification when a spend/transfer is recorded.
+     * Post a minimal, professional system notification for the latest transaction only.
+     * Clears all older notifications so only the latest credit or debit is displayed.
      */
     fun showAutoAddedExpenseNotification(
         context: Context,
@@ -55,9 +58,12 @@ object ExpenseNotificationHelper {
         categoryName: String,
         sourceDisplayName: String = "App",
         transactionRef: String? = null,
-        notificationId: Int = expenseId.toInt().coerceIn(1, Int.MAX_VALUE)
+        notificationId: Int = LATEST_SPEND_NOTIFICATION_ID
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Clear all older notifications: user strictly sees ONLY the latest transaction
+        manager.cancelAll()
 
         // Intent to open MainActivity and directly show edit sheet for this expense
         val openIntent = Intent(context, MainActivity::class.java).apply {
@@ -88,29 +94,41 @@ object ExpenseNotificationHelper {
         )
 
         val amountStr = CurrencyFormatter.formatMinor(amountMinor, currencyCode)
+        val cleanRecipient = merchantOrRecipient.trim()
+        val hasRecipient = cleanRecipient.isNotBlank() &&
+                !cleanRecipient.equals("Shop", ignoreCase = true) &&
+                !cleanRecipient.equals("Account", ignoreCase = true) &&
+                !cleanRecipient.equals("Sender", ignoreCase = true) &&
+                !cleanRecipient.equals("Messages", ignoreCase = true) &&
+                !cleanRecipient.equals("Message", ignoreCase = true) &&
+                !cleanRecipient.equals("Bank SMS", ignoreCase = true) &&
+                !cleanRecipient.equals("SMS", ignoreCase = true) &&
+                !cleanRecipient.equals("Gmail", ignoreCase = true) &&
+                !cleanRecipient.equals("Outlook", ignoreCase = true) &&
+                !cleanRecipient.equals("Yahoo Mail", ignoreCase = true) &&
+                !cleanRecipient.equals("Money Transfer", ignoreCase = true) &&
+                !cleanRecipient.equals("Account Transfer", ignoreCase = true) &&
+                !cleanRecipient.equals("Transfer", ignoreCase = true) &&
+                !cleanRecipient.equals("Expense", ignoreCase = true) &&
+                !cleanRecipient.equals("Income", ignoreCase = true) &&
+                !cleanRecipient.equals("Received Money", ignoreCase = true)
+
+        // Professional, minimal title requested by user (e.g. "Paid ₹10 for Coffee", "Transferred ₹1", "Received ₹10")
         val title = when (label) {
-            "Self Transfer" -> "🔄 Self Transfer $amountStr to ${merchantOrRecipient.ifBlank { "Account" }}"
-            "Transfer" -> "🔄 Transfer $amountStr to ${merchantOrRecipient.ifBlank { "Account" }}"
-            "Received", "Credited" -> "💰 Credited +$amountStr from ${merchantOrRecipient.ifBlank { "Sender" }}"
-            "Refund" -> "💰 Refund +$amountStr from ${merchantOrRecipient.ifBlank { "Merchant" }}"
-            else -> "🛍️ Paid $amountStr to ${merchantOrRecipient.ifBlank { "Shop" }}"
+            "Self Transfer" -> if (hasRecipient) "Self Transfer $amountStr to $cleanRecipient" else "Self Transfer $amountStr"
+            "Transfer" -> if (hasRecipient) "Transferred $amountStr to $cleanRecipient" else "Transferred $amountStr"
+            "Received", "Credited" -> if (hasRecipient) "Received $amountStr from $cleanRecipient" else "Received $amountStr"
+            "Refund" -> if (hasRecipient) "Refund $amountStr from $cleanRecipient" else "Refund $amountStr"
+            else -> if (hasRecipient) "Paid $amountStr to $cleanRecipient" else "Paid $amountStr"
         }
 
-        val contentText = "📂 $categoryName • via $sourceDisplayName"
+        val contentText = "$categoryName • Spendly"
 
         val bigTextBuilder = StringBuilder()
         bigTextBuilder.append(title).append("\n")
-        bigTextBuilder.append("📂 Category: ").append(categoryName).append("\n")
-        bigTextBuilder.append("📱 Source: via ").append(sourceDisplayName)
+        bigTextBuilder.append("Category: ").append(categoryName)
         if (!transactionRef.isNullOrBlank()) {
-            bigTextBuilder.append("\n🔢 Ref/UTR: ").append(transactionRef)
-        }
-        bigTextBuilder.append("\n✓ Recorded in Spendly. Tap to edit or categorize.")
-
-        val largeIcon = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
-        } catch (_: Exception) {
-            null
+            bigTextBuilder.append("\nRef: ").append(transactionRef)
         }
 
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
@@ -125,18 +143,14 @@ object ExpenseNotificationHelper {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
                 android.R.drawable.ic_menu_edit,
-                "✏️ Edit Spend",
+                "Edit",
                 openPending
             )
             .addAction(
                 android.R.drawable.ic_menu_delete,
-                "❌ Undo",
+                "Undo",
                 undoPending
             )
-
-        if (largeIcon != null) {
-            builder.setLargeIcon(largeIcon)
-        }
 
         val notification = builder.build()
 
@@ -152,9 +166,10 @@ object ExpenseNotificationHelper {
         amountMinor: Long?,
         merchant: String?,
         sourceDisplayName: String,
-        notificationId: Int = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
+        notificationId: Int = LATEST_SPEND_NOTIFICATION_ID
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancelAll()
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN_CANDIDATE
@@ -180,14 +195,15 @@ object ExpenseNotificationHelper {
         )
 
         val amountStr = amountMinor?.let { CurrencyFormatter.formatMinor(it) } ?: "Amount detected"
-        val contentTitle = "$amountStr • Possible payment detected"
-        val contentText = if (!merchant.isNullOrBlank()) "From $merchant ($sourceDisplayName)" else "Detected from $sourceDisplayName"
+        val cleanMerchant = merchant?.trim().orEmpty()
+        val isCarrierOrApp = cleanMerchant.equals("Messages", ignoreCase = true) ||
+                cleanMerchant.equals("SMS", ignoreCase = true) ||
+                cleanMerchant.equals("Bank SMS", ignoreCase = true) ||
+                cleanMerchant.equals("Gmail", ignoreCase = true)
+        val hasMerchant = cleanMerchant.isNotBlank() && !isCarrierOrApp
 
-        val largeIcon = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
-        } catch (_: Exception) {
-            null
-        }
+        val contentTitle = if (hasMerchant) "$amountStr paid to $cleanMerchant" else "$amountStr payment detected"
+        val contentText = "Tap to confirm • Spendly"
 
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spendly)
@@ -196,12 +212,8 @@ object ExpenseNotificationHelper {
             .setContentIntent(openPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .addAction(android.R.drawable.ic_input_add, "Add Expense", openPending)
+            .addAction(android.R.drawable.ic_input_add, "Add", openPending)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPending)
-
-        if (largeIcon != null) {
-            builder.setLargeIcon(largeIcon)
-        }
 
         val notification = builder.build()
 

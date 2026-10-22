@@ -326,10 +326,10 @@ internal object CommonPatterns {
     val TRANSFER_KEYWORDS = listOf(
         "self", "to self", "self transfer", "own account", "own a/c",
         "between accounts", "to your account", "to your own",
-        "transferred to", "transfer to", "transferred", "transfer of",
-        "sent to", "sent money", "send money to", "send money",
+        "transferred to", "transfer to", "transferred", "transfer of", "transfer", "trf to", "trf",
+        "sent to", "sent money", "send money to", "send money", "sent",
         "to a/c", "to account", "fund transfer", "funds transfer",
-        "p2p", "upi transfer", "imps", "neft", "rtgs"
+        "p2p", "upi transfer", "to vpa", "towards upi", "towards", "imps", "neft", "rtgs"
     )
 
     fun isLikelyPersonPayee(name: String): Boolean {
@@ -397,9 +397,9 @@ internal object CommonPatterns {
         RegexOption.IGNORE_CASE
     )
 
-    // Pattern 4: trf to / transfer to
+    // Pattern 4: trf to / transfer to / sent to
     private val TRF_PATTERN = Regex(
-        """(?:trf\s+to|transfer\s+to)\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,30}?)""" +
+        """(?:trf\s+to|transfer\s+to|towards\s+transfer\s+to|sent\s+to)\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,30}?)""" +
         """(?:\s+(?:on|via|ref|upi|using|from|avl)\b|[\.,;]|\s*$)""",
         RegexOption.IGNORE_CASE
     )
@@ -418,7 +418,9 @@ internal object CommonPatterns {
         "helpline", "terms", "charges", "beneficiary", "credited to",
         "debited from", "balance is", "not you", "call", "sms",
         "view the", "below e-mail", "e-mailer", "mailer", "email", "view",
-        "account transfer", "alert", "notice", "update", "kotak811"
+        "account transfer", "alert", "notice", "update", "kotak811",
+        "messages", "message", "bank sms", "samsung messages", "gmail",
+        "outlook", "yahoo mail"
     )
 
     fun sanitizeMerchantName(name: String): String {

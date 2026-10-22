@@ -198,18 +198,44 @@ class SpendlyNotificationListener : NotificationListenerService() {
                     parsed.recordType == RecordType.INCOME ||
                     parsed.recordType == RecordType.REFUND
 
+            val rawMerchant = parsed.merchant.trim()
+            val isCarrierOrSystem = rawMerchant.equals("Messages", ignoreCase = true) ||
+                    rawMerchant.equals("Message", ignoreCase = true) ||
+                    rawMerchant.equals("Bank SMS", ignoreCase = true) ||
+                    rawMerchant.equals("SMS", ignoreCase = true) ||
+                    rawMerchant.equals("Gmail", ignoreCase = true) ||
+                    rawMerchant.equals("Outlook", ignoreCase = true) ||
+                    rawMerchant.equals("Yahoo Mail", ignoreCase = true) ||
+                    rawMerchant.equals("PhonePe", ignoreCase = true) ||
+                    rawMerchant.equals("Google Pay", ignoreCase = true) ||
+                    rawMerchant.equals("Paytm", ignoreCase = true) ||
+                    rawMerchant.equals("GPay", ignoreCase = true) ||
+                    rawMerchant.equals("Android", ignoreCase = true) ||
+                    rawMerchant.equals("System", ignoreCase = true)
+
+            val cleanMerchant = if (isCarrierOrSystem) "" else rawMerchant
+
             val isSelf = !isCredit && (
                     fullText.lowercase().contains("self") ||
-                    parsed.merchant.lowercase().contains("self") ||
-                    parsed.merchant.contains("Annem", ignoreCase = true) ||
-                    parsed.merchant.contains("Chaitanya", ignoreCase = true)
+                    cleanMerchant.lowercase().contains("self") ||
+                    cleanMerchant.contains("Annem", ignoreCase = true) ||
+                    cleanMerchant.contains("Chaitanya", ignoreCase = true)
             )
 
             val isTransfer = !isCredit && (
                     isSelf ||
                     parsed.recordType == RecordType.TRANSFER ||
                     CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
-                    CommonPatterns.isLikelyPersonPayee(parsed.merchant)
+                    CommonPatterns.isLikelyPersonPayee(cleanMerchant) ||
+                    (cleanMerchant.isBlank() && (
+                        SupportedPackages.isSms(pkg) ||
+                        SupportedPackages.isUpi(pkg) ||
+                        fullText.contains("upi", ignoreCase = true) ||
+                        fullText.contains("vpa", ignoreCase = true) ||
+                        fullText.contains("p2p", ignoreCase = true) ||
+                        fullText.contains("sent", ignoreCase = true) ||
+                        fullText.contains("transfer", ignoreCase = true)
+                    ))
             )
 
             val finalRecordType = when {
@@ -232,24 +258,33 @@ class SpendlyNotificationListener : NotificationListenerService() {
             }
 
             // Auto-categorize
-            val suggestedCatId = repository.suggestCategoryId(parsed.merchant, finalRecordType)
+            val suggestedCatId = repository.suggestCategoryId(cleanMerchant, finalRecordType)
             val categoryName = repository.getCategoryName(suggestedCatId)
 
             val displayPayee = when {
-                parsed.merchant.isNotBlank() -> parsed.merchant
+                cleanMerchant.isNotBlank() -> cleanMerchant
                 isSelf -> "Self Account"
-                isTransfer -> "Account Transfer"
-                finalRecordType == RecordType.INCOME -> "Received Money"
-                finalRecordType == RecordType.REFUND -> "Merchant Refund"
-                else -> sourceDisplayName
+                isTransfer -> ""
+                finalRecordType == RecordType.INCOME -> ""
+                finalRecordType == RecordType.REFUND -> ""
+                else -> ""
             }
 
             val note = when {
-                isSelf -> "Self Transfer to $displayPayee"
-                finalRecordType == RecordType.TRANSFER -> "Transfer to $displayPayee"
-                finalRecordType == RecordType.REFUND -> "Refund from $displayPayee"
-                effectiveDirection == TransactionDirection.CREDIT -> "Credited from $displayPayee"
-                else -> "Paid to $displayPayee"
+                isSelf -> if (cleanMerchant.isNotBlank()) "Self Transfer to $cleanMerchant" else "Self Transfer"
+                finalRecordType == RecordType.TRANSFER -> if (cleanMerchant.isNotBlank()) "Transfer to $cleanMerchant" else "Transfer"
+                finalRecordType == RecordType.REFUND -> if (cleanMerchant.isNotBlank()) "Refund from $cleanMerchant" else "Refund"
+                effectiveDirection == TransactionDirection.CREDIT -> if (cleanMerchant.isNotBlank()) "Credited from $cleanMerchant" else "Credited"
+                else -> if (cleanMerchant.isNotBlank()) "Paid to $cleanMerchant" else "Paid"
+            }
+
+            val expenseMerchant = when {
+                cleanMerchant.isNotBlank() -> cleanMerchant
+                isSelf -> "Self Account"
+                finalRecordType == RecordType.TRANSFER -> "Money Transfer"
+                finalRecordType == RecordType.INCOME -> "Income"
+                finalRecordType == RecordType.REFUND -> "Refund"
+                else -> "Expense"
             }
 
             val expense = Expense(
@@ -257,7 +292,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 currencyCode = parsed.currencyCode,
                 direction = effectiveDirection,
                 recordType = finalRecordType,
-                merchant = parsed.merchant.ifBlank { displayPayee },
+                merchant = expenseMerchant,
                 categoryId = suggestedCatId,
                 transactionAt = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
@@ -270,7 +305,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
             val createdExpenseId = repository.saveExpense(expense)
             val candidateId = recordCandidate(pkg, notifKey, fullText, parsed, createdExpenseId, sbn.postTime)
 
-            // Post improved, high-visibility status bar notification
+            // Post improved, high-visibility status bar notification (only latest notification kept)
             ExpenseNotificationHelper.showAutoAddedExpenseNotification(
                 context = this@SpendlyNotificationListener,
                 expenseId = createdExpenseId,
@@ -282,7 +317,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 categoryName = categoryName,
                 sourceDisplayName = sourceDisplayName,
                 transactionRef = parsed.transactionRef,
-                notificationId = createdExpenseId.toInt().coerceIn(1, Int.MAX_VALUE)
+                notificationId = ExpenseNotificationHelper.LATEST_SPEND_NOTIFICATION_ID
             )
 
             // Schedule candidate text cleanup after 10 minutes
