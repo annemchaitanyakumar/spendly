@@ -148,17 +148,25 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 parsed.merchant.contains("Annem", ignoreCase = true) ||
                 parsed.merchant.contains("Chaitanya", ignoreCase = true)
 
-        val isTransfer = isSelf ||
+        val isCredit = parsed.direction == TransactionDirection.CREDIT ||
+                parsed.recordType == RecordType.INCOME ||
+                parsed.recordType == RecordType.REFUND
+
+        val isTransfer = !isCredit && (isSelf ||
                 parsed.recordType == RecordType.TRANSFER ||
                 CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
-                CommonPatterns.isLikelyPersonPayee(parsed.merchant)
+                CommonPatterns.isLikelyPersonPayee(parsed.merchant))
 
-        val finalRecordType = if (isTransfer) RecordType.TRANSFER else parsed.recordType
+        val finalRecordType = when {
+            isCredit -> parsed.recordType
+            isTransfer -> RecordType.TRANSFER
+            else -> parsed.recordType
+        }
 
-        val effectiveDirection = if (finalRecordType == RecordType.TRANSFER) {
-            TransactionDirection.DEBIT
-        } else {
-            parsed.direction
+        val effectiveDirection = when {
+            isCredit -> TransactionDirection.CREDIT
+            isTransfer -> TransactionDirection.DEBIT
+            else -> parsed.direction
         }
 
         val label = when {
@@ -175,6 +183,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
         val displayPayee = when {
             parsed.merchant.isNotBlank() -> parsed.merchant
+            isSelf -> "Self Account"
             isTransfer -> "Account Transfer"
             finalRecordType == RecordType.INCOME -> "Received Money"
             else -> sourceDisplayName
@@ -182,11 +191,12 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
         var createdExpenseId: Long? = null
 
-        // Automatically record confirmed expenses/transfers if amount is valid
-        if (parsed.amountMinor != null && parsed.amountMinor > 0L && effectiveDirection == TransactionDirection.DEBIT) {
+        // Automatically record confirmed debits and credits if amount is valid
+        if (parsed.amountMinor != null && parsed.amountMinor > 0L) {
             val note = when {
                 isSelf -> "Self Transfer to $displayPayee"
                 finalRecordType == RecordType.TRANSFER -> "Transfer to $displayPayee"
+                effectiveDirection == TransactionDirection.CREDIT -> "Received from $displayPayee"
                 else -> "Paid to $displayPayee"
             }
 
@@ -195,7 +205,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 currencyCode = parsed.currencyCode,
                 direction = effectiveDirection,
                 recordType = finalRecordType,
-                merchant = parsed.merchant,
+                merchant = parsed.merchant.ifBlank { displayPayee },
                 categoryId = suggestedCatId,
                 transactionAt = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),

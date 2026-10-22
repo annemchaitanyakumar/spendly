@@ -154,6 +154,14 @@ fun TransactionsScreen(
             }
         }
     }
+
+    editingExpense?.let { exp ->
+        com.spendly.app.feature.expenseform.AddExpenseSheet(
+            onDismiss = { editingExpense = null },
+            onSaved = { editingExpense = null },
+            expenseIdToEdit = exp.id
+        )
+    }
 }
 
 @Composable

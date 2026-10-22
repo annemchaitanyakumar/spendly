@@ -192,6 +192,46 @@ interface ExpenseDao {
     // ── Update confirmation status ───────────────────────────────────
     @Query("UPDATE expenses SET confirmation_status = :status, updated_at = :now WHERE id = :id")
     suspend fun updateConfirmationStatus(id: Long, status: ConfirmationStatus, now: Long = System.currentTimeMillis())
+    @Query("""
+        SELECT source_package, SUM(amount_minor) as total, COUNT(*) as count
+        FROM expenses
+        WHERE confirmation_status = 'CONFIRMED'
+          AND direction = 'DEBIT'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
+          AND transaction_at >= :startMillis
+          AND transaction_at < :endMillis
+        GROUP BY source_package
+        ORDER BY total DESC
+    """)
+    fun observeAppSourceTotals(startMillis: Long, endMillis: Long): Flow<List<AppSourceTotal>>
+
+    @Query("""
+        SELECT COALESCE(SUM(amount_minor), 0) FROM expenses
+        WHERE confirmation_status = 'CONFIRMED'
+          AND direction = 'CREDIT'
+          AND transaction_at >= :startMillis
+          AND transaction_at < :endMillis
+    """)
+    fun observeMonthlyCredits(startMillis: Long, endMillis: Long): Flow<Long>
+
+    @Query("""
+        SELECT COALESCE(SUM(amount_minor), 0) FROM expenses
+        WHERE confirmation_status = 'CONFIRMED'
+          AND direction = 'DEBIT'
+          AND record_type = 'TRANSFER'
+          AND transaction_at >= :startMillis
+          AND transaction_at < :endMillis
+    """)
+    fun observeMonthlyTransfersTotal(startMillis: Long, endMillis: Long): Flow<Long>
+
+    @Query("""
+        SELECT * FROM expenses
+        WHERE confirmation_status = 'CONFIRMED'
+          AND transaction_at >= :startMillis
+          AND transaction_at < :endMillis
+        ORDER BY transaction_at DESC
+    """)
+    fun observeAllMonthlyTransactions(startMillis: Long, endMillis: Long): Flow<List<ExpenseEntity>>
 }
 
 data class CategoryTotal(
@@ -206,6 +246,12 @@ data class DailyTotal(
 
 data class MerchantTotal(
     val merchant: String,
+    val total: Long,
+    val count: Int
+)
+
+data class AppSourceTotal(
+    @ColumnInfo(name = "source_package") val sourcePackage: String?,
     val total: Long,
     val count: Int
 )

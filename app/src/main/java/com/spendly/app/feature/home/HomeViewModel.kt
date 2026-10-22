@@ -17,6 +17,7 @@ data class HomeUiState(
     val recentExpenses: List<Expense> = emptyList(),
     val pendingCandidates: List<TransactionCandidate> = emptyList(),
     val pendingCandidateCount: Int = 0,
+    val cashFlowDays: List<DayCashFlow> = emptyList(),
     val error: String? = null
 )
 
@@ -38,9 +39,10 @@ class HomeViewModel(
             .flatMapLatest { (year, month) ->
                 combine(
                     repository.observeMonthSummary(year, month),
-                    repository.observeRecentExpenses(8),
-                    repository.observePendingCandidates()
-                ) { summary, recent, candidates ->
+                    repository.observeRecentExpenses(12),
+                    repository.observePendingCandidates(),
+                    repository.observeMonthlyCashFlow(year, month)
+                ) { summary, recent, candidates, cashFlow ->
                     val (year2, month2) = _selectedMonth.value
                     HomeUiState(
                         isLoading = false,
@@ -49,7 +51,8 @@ class HomeViewModel(
                         monthSummary = summary,
                         recentExpenses = recent,
                         pendingCandidates = candidates,
-                        pendingCandidateCount = candidates.size
+                        pendingCandidateCount = candidates.size,
+                        cashFlowDays = cashFlow
                     )
                 }
             }
@@ -90,7 +93,7 @@ class HomeViewModel(
                 direction = effectiveDirection,
                 recordType = effectiveRecordType,
                 merchant = candidate.merchant,
-                categoryId = candidate.suggestedCategoryId ?: 20L,
+                categoryId = candidate.suggestedCategoryId ?: (if (effectiveRecordType == RecordType.TRANSFER) 13L else 20L),
                 transactionAt = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
                 sourcePackage = candidate.sourcePackage,
@@ -124,7 +127,6 @@ class HomeViewModel(
     fun nextMonth() {
         val (year, month) = _selectedMonth.value
         val now = DateTimeUtils.currentYearMonth()
-        // Don't navigate to future months
         if (year > now.first || (year == now.first && month >= now.second)) return
         if (month == 12) setMonth(year + 1, 1)
         else setMonth(year, month + 1)

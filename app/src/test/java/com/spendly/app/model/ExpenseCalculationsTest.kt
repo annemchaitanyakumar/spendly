@@ -107,4 +107,54 @@ class ExpenseCalculationsTest {
         val spending = CategorySpending(category = cat, totalMinor = 1245000L) // 12,450.00
         assertEquals(12450.0, spending.totalMajor, 0.001)
     }
+
+    @Test
+    fun testDayCashFlowCalculations() {
+        val date = java.time.LocalDate.of(2026, 10, 22)
+        val cashFlow = DayCashFlow(
+            date = date,
+            debitMinor = 25000L,   // 250
+            creditMinor = 100000L, // 1000
+            transactions = emptyList()
+        )
+        assertEquals(75000L, cashFlow.netMinor) // +750
+        assertTrue(cashFlow.hasActivity)
+
+        val idleDay = DayCashFlow(
+            date = date,
+            debitMinor = 0L,
+            creditMinor = 0L,
+            transactions = emptyList()
+        )
+        assertFalse(idleDay.hasActivity)
+        assertEquals(0L, idleDay.netMinor)
+    }
+
+    @Test
+    fun testMonthSummaryNetBalanceAndAppSpending() {
+        val appPhonePe = AppSpending("com.phonepe.app", "PhonePe", "phonepe", 500000L, 5)
+        val appGPay = AppSpending("com.google.android.apps.nbu.paisa.user", "Google Pay", "gpay", 300000L, 3)
+
+        val summary = MonthSummary(
+            year = 2026,
+            month = 10,
+            totalMinor = 800000L, // 8,000 debited total
+            previousMonthTotalMinor = null,
+            totalCreditsMinor = 2000000L, // 20,000 credited total
+            totalTransfersMinor = 300000L, // 3,000 was transfers
+            categoryBreakdown = emptyList(),
+            dailyTotals = emptyList(),
+            topMerchants = emptyList(),
+            appSpends = listOf(appPhonePe, appGPay)
+        )
+
+        assertEquals(8000.0, summary.totalMajor, 0.001)
+        assertEquals(20000.0, summary.totalCreditsMajor, 0.001)
+        assertEquals(3000.0, summary.totalTransfersMajor, 0.001)
+        assertEquals(1200000L, summary.netBalanceMinor) // 20,000 - 8,000 = 12,000
+        assertEquals(12000.0, summary.netBalanceMajor, 0.001)
+        assertEquals(2, summary.appSpends.size)
+        assertEquals("PhonePe", summary.appSpends[0].appDisplayName)
+        assertEquals(5000.0, summary.appSpends[0].totalMajor, 0.001)
+    }
 }

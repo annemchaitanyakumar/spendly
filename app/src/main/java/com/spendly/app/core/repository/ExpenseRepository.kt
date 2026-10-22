@@ -114,10 +114,26 @@ class ExpenseRepository(
         return combine(
             expenseDao.observeMonthlyTotal(start, end),
             expenseDao.observeMonthlyTotal(prevStart, prevEnd),
+            expenseDao.observeMonthlyCredits(start, end),
+            expenseDao.observeMonthlyTransfersTotal(start, end),
             expenseDao.observeCategoryTotals(start, end),
             expenseDao.observeDailyTotals(start, end),
-            expenseDao.observeTopMerchants(start, end)
-        ) { total, prevTotal, catTotals, dayTotals, merchants ->
+            expenseDao.observeTopMerchants(start, end),
+            expenseDao.observeAppSourceTotals(start, end)
+        ) { args ->
+            val total = args[0] as Long
+            val prevTotal = args[1] as Long
+            val credits = args[2] as Long
+            val transfers = args[3] as Long
+            @Suppress("UNCHECKED_CAST")
+            val catTotals = args[4] as List<CategoryTotal>
+            @Suppress("UNCHECKED_CAST")
+            val dayTotals = args[5] as List<DailyTotal>
+            @Suppress("UNCHECKED_CAST")
+            val merchants = args[6] as List<MerchantTotal>
+            @Suppress("UNCHECKED_CAST")
+            val appTotals = args[7] as List<AppSourceTotal>
+
             val allCategories = categoryDao.getAll().associateBy { it.id }
 
             MonthSummary(
@@ -125,6 +141,8 @@ class ExpenseRepository(
                 month = month,
                 totalMinor = total,
                 previousMonthTotalMinor = prevTotal.takeIf { it > 0L },
+                totalCreditsMinor = credits,
+                totalTransfersMinor = transfers,
                 categoryBreakdown = catTotals.map { ct ->
                     CategorySpending(
                         category = ct.categoryId?.let { allCategories[it]?.toDomain() },
@@ -132,8 +150,92 @@ class ExpenseRepository(
                     )
                 }.sortedByDescending { it.totalMinor },
                 dailyTotals = dayTotals.map { DailySpending(it.dayEpoch, it.total) },
-                topMerchants = merchants.map { MerchantSpending(it.merchant, it.total, it.count) }
+                topMerchants = merchants.map { MerchantSpending(it.merchant, it.total, it.count) },
+                appSpends = appTotals.map { app ->
+                    AppSpending(
+                        packageName = app.sourcePackage,
+                        appDisplayName = mapPackageToDisplayName(app.sourcePackage),
+                        iconKey = mapPackageToIconKey(app.sourcePackage),
+                        totalMinor = app.total,
+                        transactionCount = app.count
+                    )
+                }.sortedByDescending { it.totalMinor }
             )
+        }
+    }
+
+    fun observeMonthlyCashFlow(year: Int, month: Int): Flow<List<DayCashFlow>> {
+        val start = DateTimeUtils.monthStartMillis(year, month)
+        val end = DateTimeUtils.monthEndMillis(year, month)
+        val allCategoriesFlow = categoryDao.observeAll().map { list -> list.associateBy { it.id } }
+
+        return combine(
+            expenseDao.observeAllMonthlyTransactions(start, end),
+            allCategoriesFlow
+        ) { entities, categories ->
+            val domainExpenses = entities.map { entity ->
+                val cat = entity.categoryId?.let { categories[it] }
+                entity.toDomain(cat)
+            }
+            val groupedByDate = domainExpenses.groupBy { exp ->
+                DateTimeUtils.epochToLocalDate(exp.transactionAt)
+            }
+
+            val ym = java.time.YearMonth.of(year, month)
+            val daysInMonth = ym.lengthOfMonth()
+
+            (1..daysInMonth).map { day ->
+                val date = ym.atDay(day)
+                val dayExpenses = groupedByDate[date] ?: emptyList()
+                val debits = dayExpenses.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor }
+                val credits = dayExpenses.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor }
+                DayCashFlow(
+                    date = date,
+                    debitMinor = debits,
+                    creditMinor = credits,
+                    transactions = dayExpenses
+                )
+            }
+        }
+    }
+
+    fun mapPackageToDisplayName(pkg: String?): String {
+        return when (pkg) {
+            "com.phonepe.app" -> "PhonePe"
+            "com.google.android.apps.nbu.paisa.user" -> "Google Pay"
+            "net.one97.paytm" -> "Paytm"
+            "in.org.npci.upiapp" -> "BHIM UPI"
+            "com.dreamplug.androidapp" -> "CRED"
+            "in.amazon.mShop.android.shopping" -> "Amazon Pay"
+            "bank_sms" -> "Bank SMS"
+            null, "" -> "Manual Entry"
+            else -> {
+                if (pkg.contains("sms", ignoreCase = true) || pkg.contains("messaging", ignoreCase = true)) {
+                    "Bank SMS"
+                } else {
+                    pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+                }
+            }
+        }
+    }
+
+    fun mapPackageToIconKey(pkg: String?): String {
+        return when (pkg) {
+            "com.phonepe.app" -> "phonepe"
+            "com.google.android.apps.nbu.paisa.user" -> "gpay"
+            "net.one97.paytm" -> "paytm"
+            "in.org.npci.upiapp" -> "bhim"
+            "com.dreamplug.androidapp" -> "cred"
+            "in.amazon.mShop.android.shopping" -> "amazon"
+            "bank_sms" -> "sms"
+            null, "" -> "manual"
+            else -> {
+                if (pkg.contains("sms", ignoreCase = true) || pkg.contains("messaging", ignoreCase = true)) {
+                    "sms"
+                } else {
+                    "generic"
+                }
+            }
         }
     }
 

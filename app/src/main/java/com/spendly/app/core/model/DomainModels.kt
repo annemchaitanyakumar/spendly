@@ -89,11 +89,18 @@ data class MonthSummary(
     val month: Int,
     val totalMinor: Long,
     val previousMonthTotalMinor: Long?,
+    val totalCreditsMinor: Long = 0L,
+    val totalTransfersMinor: Long = 0L,
     val categoryBreakdown: List<CategorySpending>,
     val dailyTotals: List<DailySpending>,
-    val topMerchants: List<MerchantSpending>
+    val topMerchants: List<MerchantSpending>,
+    val appSpends: List<AppSpending> = emptyList()
 ) {
     val totalMajor: Double get() = totalMinor / 100.0
+    val totalCreditsMajor: Double get() = totalCreditsMinor / 100.0
+    val totalTransfersMajor: Double get() = totalTransfersMinor / 100.0
+    val netBalanceMinor: Long get() = totalCreditsMinor - totalMinor
+    val netBalanceMajor: Double get() = netBalanceMinor / 100.0
     val previousMajor: Double? get() = previousMonthTotalMinor?.let { it / 100.0 }
     val changePercent: Double?
         get() {
@@ -123,4 +130,24 @@ data class MerchantSpending(
     val transactionCount: Int
 ) {
     val totalMajor: Double get() = totalMinor / 100.0
+}
+
+data class AppSpending(
+    val packageName: String?,
+    val appDisplayName: String,
+    val iconKey: String,
+    val totalMinor: Long,
+    val transactionCount: Int
+) {
+    val totalMajor: Double get() = totalMinor / 100.0
+}
+
+data class DayCashFlow(
+    val date: java.time.LocalDate,
+    val debitMinor: Long,
+    val creditMinor: Long,
+    val transactions: List<Expense>
+) {
+    val netMinor: Long get() = creditMinor - debitMinor
+    val hasActivity: Boolean get() = debitMinor > 0L || creditMinor > 0L || transactions.isNotEmpty()
 }
