@@ -150,6 +150,9 @@ class ExpenseRepository(
     fun observePendingCandidates(): Flow<List<TransactionCandidate>> =
         candidateDao.observePending().map { list -> list.map { it.toDomain() } }
 
+    fun observeRecentCandidates(limit: Int = 5): Flow<List<TransactionCandidate>> =
+        candidateDao.observeRecentCandidates(limit).map { list -> list.map { it.toDomain() } }
+
     fun observePendingCandidateCount(): Flow<Int> = candidateDao.observePendingCount()
 
     suspend fun saveCandidate(entity: TransactionCandidateEntity): Long =
@@ -244,5 +247,22 @@ class ExpenseRepository(
     suspend fun cleanupOldCandidates(olderThanDays: Int = 30) = withContext(Dispatchers.IO) {
         val cutoff = System.currentTimeMillis() - (olderThanDays * 24 * 60 * 60 * 1000L)
         candidateDao.deleteOlderThan(cutoff)
+    }
+
+    suspend fun suggestCategoryId(merchant: String, recordType: RecordType): Long = withContext(Dispatchers.IO) {
+        if (recordType == RecordType.TRANSFER) return@withContext 13L // Transfers category
+        val lower = merchant.lowercase()
+        for ((keyword, catId) in DatabaseSeedData.merchantCategoryHints) {
+            if (lower.contains(keyword)) return@withContext catId
+        }
+        val existing = merchantDao.findByName(merchant)
+        if (existing?.suggestedCategoryId != null) {
+            return@withContext existing.suggestedCategoryId
+        }
+        1L // Default to Food & Dining / or 14L Other
+    }
+
+    suspend fun getCategoryName(categoryId: Long): String = withContext(Dispatchers.IO) {
+        categoryDao.getById(categoryId)?.name ?: "Expenses"
     }
 }

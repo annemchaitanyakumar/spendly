@@ -1,6 +1,5 @@
 package com.spendly.app.feature.home
 
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -19,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
@@ -33,7 +37,6 @@ import com.spendly.app.core.model.*
 import com.spendly.app.theme.*
 import com.spendly.app.ui.components.*
 import com.spendly.app.ui.spendlyViewModel
-import java.time.LocalDate
 
 @Composable
 fun HomeScreen(
@@ -45,12 +48,22 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    val isNotifListenerEnabled = remember {
-        mutableStateOf<Boolean>(isNotificationListenerEnabled(context))
+    var isNotifListenerEnabled by remember {
+        mutableStateOf(isNotificationListenerEnabled(context))
     }
 
-    LaunchedEffect(Unit) {
-        isNotifListenerEnabled.value = isNotificationListenerEnabled(context)
+    // Auto-refresh permission status whenever user returns from Android Settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isNotifListenerEnabled = isNotificationListenerEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     var reviewingCandidate by remember { mutableStateOf<TransactionCandidate?>(null) }
@@ -72,7 +85,7 @@ fun HomeScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Greeting ──────────────────────────────────────────────────
+        // ── Greeting Header ──────────────────────────────────────────
         item(key = "greeting") {
             GreetingHeader(
                 year = state.currentYear,
@@ -84,17 +97,24 @@ fun HomeScreen(
         }
 
         // ── Notification Listener Banner ──────────────────────────────
-        if (!isNotifListenerEnabled.value) {
+        if (!isNotifListenerEnabled) {
             item(key = "notif_banner") {
                 NotificationPermissionBanner(
                     onEnable = {
-                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        try {
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        } catch (_: Exception) {
+                            context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                        }
+                    },
+                    onRefresh = {
+                        isNotifListenerEnabled = isNotificationListenerEnabled(context)
                     }
                 )
             }
         }
 
-        // ── Pending confirmations ─────────────────────────────────────
+        // ── Auto-Detected / Auto-Logged Transaction Cards ─────────────
         if (state.pendingCandidates.isNotEmpty()) {
             item(key = "pending_header") {
                 Row(
@@ -102,26 +122,41 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Detected from Notifications",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                        Text("${state.pendingCandidates.size}", color = MaterialTheme.colorScheme.onPrimary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Auto-Detected Spends",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "${state.pendingCandidates.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
             items(state.pendingCandidates, key = { "candidate_${it.id}" }) { candidate ->
                 DetectedExpenseCard(
                     candidate = candidate,
-                    onConfirm = { reviewingCandidate = candidate },
+                    onEdit = { reviewingCandidate = candidate },
+                    onUndo = { viewModel.undoAutoLoggedExpense(candidate) },
                     onDismiss = { viewModel.dismissCandidate(candidate.id) }
                 )
             }
         }
 
-        // ── Monthly Total ─────────────────────────────────────────────
+        // ── Monthly Total Card ────────────────────────────────────────
         item(key = "monthly_total") {
             MonthlyTotalCard(summary = state.monthSummary)
         }
@@ -134,7 +169,7 @@ fun HomeScreen(
             }
         }
 
-        // ── Recent Transactions ───────────────────────────────────────
+        // ── Recent Expenses Header ────────────────────────────────────
         item(key = "recent_header") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -144,7 +179,7 @@ fun HomeScreen(
                 Text(
                     "Recent Expenses",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -197,7 +232,7 @@ private fun GreetingHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,19 +244,35 @@ private fun GreetingHeader(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Row {
-                IconButton(onClick = onPrevMonth, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.ChevronLeft, "Previous month",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(
-                    onClick = onNextMonth,
-                    modifier = Modifier.size(36.dp),
-                    enabled = canGoNext
+            // Month navigation capsule
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Default.ChevronRight, "Next month",
-                        tint = if (canGoNext) MaterialTheme.colorScheme.onSurfaceVariant
-                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                    IconButton(onClick = onPrevMonth, modifier = Modifier.size(34.dp)) {
+                        Icon(
+                            Icons.Default.ChevronLeft,
+                            contentDescription = "Previous month",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(
+                        onClick = onNextMonth,
+                        modifier = Modifier.size(34.dp),
+                        enabled = canGoNext
+                    ) {
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = "Next month",
+                            tint = if (canGoNext) MaterialTheme.colorScheme.onSurface
+                                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        )
+                    }
                 }
             }
         }
@@ -229,38 +280,80 @@ private fun GreetingHeader(
 }
 
 @Composable
-private fun NotificationPermissionBanner(onEnable: () -> Unit) {
+private fun NotificationPermissionBanner(
+    onEnable: () -> Unit,
+    onRefresh: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        tonalElevation = 0.dp
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+        tonalElevation = 1.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                Icons.Outlined.Notifications,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(24.dp)
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Auto-detect payments",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    "Enable notification access to detect expenses automatically",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                )
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.NotificationsActive,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Auto-detect UPI & Card Payments",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Enable notification access so Spendly can auto-record payments from PhonePe, GPay, Paytm, and bank SMS. 100% offline & private.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                        lineHeight = 18.sp
+                    )
+                }
             }
-            TextButton(onClick = onEnable) {
-                Text("Enable", color = MaterialTheme.colorScheme.primary)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = onRefresh,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Check Status", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Button(
+                    onClick = onEnable,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text("Enable Access", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
@@ -269,70 +362,158 @@ private fun NotificationPermissionBanner(onEnable: () -> Unit) {
 @Composable
 private fun DetectedExpenseCard(
     candidate: TransactionCandidate,
-    onConfirm: () -> Unit,
+    onEdit: () -> Unit,
+    onUndo: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Card(
+    val isAutoLogged = candidate.expenseId != null
+
+    val isTransfer = candidate.recordType == RecordType.TRANSFER ||
+            candidate.merchant.contains("transfer", ignoreCase = true)
+
+    val labelText = if (isTransfer) "Transfer" else "Paid"
+    val (badgeBg, badgeText) = if (isTransfer) {
+        Pair(Color(0xFFEDE7F6), Color(0xFF5E35B1))
+    } else {
+        Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
+    }
+
+    val sourceName = when {
+        candidate.sourcePackage.contains("phonepe") -> "PhonePe"
+        candidate.sourcePackage.contains("paisa") -> "Google Pay"
+        candidate.sourcePackage.contains("paytm") -> "Paytm"
+        candidate.sourcePackage.contains("npci") -> "BHIM"
+        candidate.sourcePackage.contains("dreamplug") -> "CRED"
+        candidate.sourcePackage.contains("amazon") -> "Amazon Pay"
+        else -> "Bank SMS"
+    }
+
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+        shadowElevation = 2.dp
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Status and source row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFE8F5E9)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF2E7D32),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (isAutoLogged) "Auto-Added to Expenses" else "Detected Payment",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = sourceName,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            // Amount + Merchant row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = candidate.amountMinor?.let { CurrencyFormatter.formatMinor(it, candidate.currencyCode) } ?: "₹0.00",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = badgeBg
+                        ) {
+                            Text(
+                                text = labelText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeText,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        candidate.amountMinor?.let { CurrencyFormatter.formatMinor(it) } ?: "Amount unknown",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        if (candidate.merchant.isNotBlank()) candidate.merchant else "Payment detected",
+                        text = if (isTransfer && !candidate.merchant.startsWith("Transfer", ignoreCase = true)) {
+                            "To: ${candidate.merchant.ifBlank { "Account" }}"
+                        } else {
+                            candidate.merchant.ifBlank { "Merchant Payment" }
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                SuggestionChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            when {
-                                candidate.sourcePackage.contains("phonepe") -> "PhonePe"
-                                candidate.sourcePackage.contains("paisa") -> "Google Pay"
-                                candidate.sourcePackage.contains("paytm") -> "Paytm"
-                                else -> "Notification"
-                            },
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                )
             }
 
+            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text("Dismiss", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = onConfirm,
-                    shape = MaterialTheme.shapes.medium,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                OutlinedButton(
+                    onClick = onUndo,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add Expense")
+                    Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Undo", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                FilledTonalButton(
+                    onClick = onEdit,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Edit / Note", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -344,7 +525,6 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
     val totalMinor = summary?.totalMinor ?: 0L
     val changePercent = summary?.changePercent
 
-    // Animated amount display
     val animatedTotal by animateFloatAsState(
         targetValue = totalMinor.toFloat(),
         animationSpec = tween(600, easing = FastOutSlowInEasing),
@@ -353,45 +533,62 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.primary,
-        tonalElevation = 0.dp
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 4.dp
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1B5E20),
+                            Color(0xFF0A3311)
+                        )
+                    )
+                )
+                .padding(24.dp)
         ) {
-            Text(
-                "Total spent",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-            )
-            Text(
-                CurrencyFormatter.formatMinor(animatedTotal.toLong()),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-            if (changePercent != null) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "TOTAL SPENT THIS MONTH",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = Color.White.copy(alpha = 0.75f)
+                )
+
+                Text(
+                    text = CurrencyFormatter.formatMinor(animatedTotal.toLong()),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+
+                if (changePercent != null) {
                     val isIncrease = changePercent > 0
-                    Icon(
-                        if (isIncrease) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
-                        contentDescription = null,
-                        tint = if (isIncrease)
-                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                        else
-                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        "${if (isIncrease) "+" else ""}${String.format("%.1f", changePercent)}% vs last month",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isIncrease) Color(0x33FF5252) else Color(0x3369F0AE)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isIncrease) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                                contentDescription = null,
+                                tint = if (isIncrease) Color(0xFFFF8A80) else Color(0xFFB9F6CA),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "${if (isIncrease) "+" else ""}${String.format("%.1f", changePercent)}% vs last month",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isIncrease) Color(0xFFFF8A80) else Color(0xFFB9F6CA)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -402,18 +599,19 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
 private fun CategoryBreakdownCard(categories: List<CategorySpending>, total: Long) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        tonalElevation = 1.dp
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                "By Category",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+                "Spending by Category",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             categories.take(5).forEach { cat ->
@@ -441,18 +639,18 @@ private fun CategoryProgressRow(spending: CategorySpending, total: Long) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Category icon
         Surface(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(36.dp),
             shape = CircleShape,
-            color = (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f)
+            color = (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f),
+            border = BorderStroke(1.dp, (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.3f))
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = categoryIconEmoji(spending.category?.icon),
-                    fontSize = 14.sp
+                    fontSize = 16.sp
                 )
             }
         }
@@ -463,23 +661,27 @@ private fun CategoryProgressRow(spending: CategorySpending, total: Long) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    spending.category?.name ?: "Uncategorized",
-                    style = MaterialTheme.typography.bodySmall,
+                    spending.category?.name ?: "General",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     CurrencyFormatter.formatMinor(spending.totalMinor),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             LinearProgressIndicator(
                 progress = { animated },
-                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
                 color = catColor ?: MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 strokeCap = StrokeCap.Round
@@ -493,18 +695,18 @@ private fun EmptyExpensesState(onAddExpense: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 32.dp),
+            .padding(vertical = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Surface(
             modifier = Modifier.size(80.dp),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Outlined.Receipt,
+                    Icons.Outlined.ReceiptLong,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
                     tint = MaterialTheme.colorScheme.primary
@@ -512,47 +714,48 @@ private fun EmptyExpensesState(onAddExpense: () -> Unit) {
             }
         }
         Text(
-            "No expenses yet",
+            "No expenses recorded yet",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            "Add your first expense or enable notification\naccess to detect payments automatically",
+            "Payments made on PhonePe, GPay, Paytm, or bank SMS\nwill appear here automatically.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 20.sp
         )
-        Button(onClick = onAddExpense) {
+        Button(
+            onClick = onAddExpense,
+            shape = RoundedCornerShape(14.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+        ) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Add Expense")
+            Text("Add Expense Manually", fontWeight = FontWeight.Bold)
         }
     }
 }
 
-// Map category icon names to simple display strings (Material icon names → emoji)
-private fun categoryIconEmoji(icon: String?): String = when (icon) {
-    "restaurant" -> "🍽"
-    "shopping_cart" -> "🛒"
-    "directions_car" -> "🚗"
-    "shopping_bag" -> "👜"
-    "receipt_long" -> "🧾"
-    "movie" -> "🎬"
-    "local_hospital" -> "🏥"
-    "school" -> "🎓"
-    "flight" -> "✈️"
-    "local_gas_station" -> "⛽"
-    "home" -> "🏠"
-    "subscriptions" -> "📱"
-    "swap_horiz" -> "↔️"
-    else -> "•"
-}
-
 private fun isNotificationListenerEnabled(context: Context): Boolean {
-    val enabledListeners = Settings.Secure.getString(
-        context.contentResolver,
-        "enabled_notification_listeners"
-    ) ?: return false
-    return enabledListeners.contains(context.packageName)
+    val pkg = context.packageName
+    // 1. Try NotificationManagerCompat
+    try {
+        val packages = NotificationManagerCompat.getEnabledListenerPackages(context)
+        if (packages.contains(pkg)) return true
+    } catch (_: Exception) {}
+
+    // 2. Try Settings.Secure
+    try {
+        val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+        if (!flat.isNullOrBlank()) {
+            val parts = flat.split(":")
+            for (part in parts) {
+                if (part.contains(pkg)) return true
+            }
+        }
+    } catch (_: Exception) {}
+
+    return false
 }

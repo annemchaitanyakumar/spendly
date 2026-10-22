@@ -144,12 +144,20 @@ internal object CommonPatterns {
         }
     }
 
+    // Transfer keywords
+    val TRANSFER_KEYWORDS = listOf(
+        "transferred to", "transfer to", "sent to", "sent money",
+        "to a/c", "to account", "transfer of", "fund transfer",
+        "p2p", "upi transfer", "imps", "neft"
+    )
+
     fun detectRecordType(text: String, direction: TransactionDirection): RecordType {
         val lower = text.lowercase()
         return when {
             FAILURE_KEYWORDS.any { it in lower } -> RecordType.FAILED
             REFUND_KEYWORDS.any { it in lower } && direction == TransactionDirection.CREDIT -> RecordType.REFUND
             PENDING_KEYWORDS.any { it in lower } -> RecordType.PENDING
+            TRANSFER_KEYWORDS.any { it in lower } -> RecordType.TRANSFER
             direction == TransactionDirection.DEBIT -> RecordType.EXPENSE
             direction == TransactionDirection.CREDIT -> RecordType.INCOME
             else -> RecordType.UNKNOWN

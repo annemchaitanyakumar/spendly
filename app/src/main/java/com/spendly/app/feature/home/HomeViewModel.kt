@@ -39,7 +39,7 @@ class HomeViewModel(
                 combine(
                     repository.observeMonthSummary(year, month),
                     repository.observeRecentExpenses(8),
-                    repository.observePendingCandidates()
+                    repository.observeRecentCandidates(5)
                 ) { summary, recent, candidates ->
                     val (year2, month2) = _selectedMonth.value
                     HomeUiState(
@@ -64,6 +64,15 @@ class HomeViewModel(
     fun dismissCandidate(candidateId: Long) {
         viewModelScope.launch {
             repository.dismissCandidate(candidateId)
+        }
+    }
+
+    fun undoAutoLoggedExpense(candidate: TransactionCandidate) {
+        viewModelScope.launch {
+            candidate.expenseId?.let { expId ->
+                repository.deleteExpenseById(expId)
+            }
+            repository.dismissCandidate(candidate.id)
         }
     }
 

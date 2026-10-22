@@ -4,7 +4,8 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.spendly.app.core.database.entity.TransactionCandidateEntity
-import com.spendly.app.core.model.LocationSource
+import com.spendly.app.core.model.*
+import com.spendly.app.core.parser.CommonPatterns
 import com.spendly.app.core.parser.NotificationParserRegistry
 import com.spendly.app.core.repository.ExpenseRepository
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,8 @@ import kotlinx.coroutines.launch
  * - Requires the user to explicitly grant notification access via Android settings.
  * - Only reads notification content from packages the user has authorized.
  * - Does NOT access private app data, SMS inboxes, or financial account details.
- * - Never logs raw notification text in production.
+ * - Automatically records expenses / transfers into the local Room database and
+ *   posts high-priority system notifications in the Android notification drawer.
  */
 class SpendlyNotificationListener : NotificationListenerService() {
 
@@ -78,6 +80,8 @@ class SpendlyNotificationListener : NotificationListenerService() {
             recentlyProcessed.entries.removeIf { it.value < cutoff }
         }
 
+        val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
+
         // Parse the notification
         val parsed = parserRegistry.parse(pkg, title, text, bigText) ?: return
 
@@ -93,41 +97,96 @@ class SpendlyNotificationListener : NotificationListenerService() {
             return
         }
 
+        // Determine source display name
+        val sourceDisplayName = knownAppNames[pkg] ?: pkg.substringAfterLast('.')
+
+        // Distinguish Transfer vs Paid (Merchant) vs Refund vs Received
+        val isTransfer = parsed.recordType == RecordType.TRANSFER ||
+                CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) }
+        val finalRecordType = if (isTransfer) RecordType.TRANSFER else parsed.recordType
+
+        val label = when (finalRecordType) {
+            RecordType.TRANSFER -> "Transfer"
+            RecordType.INCOME -> "Received"
+            RecordType.REFUND -> "Refund"
+            else -> "Paid"
+        }
+
+        // Auto-categorize
+        val suggestedCatId = repository.suggestCategoryId(parsed.merchant, finalRecordType)
+        val categoryName = repository.getCategoryName(suggestedCatId)
+
+        var createdExpenseId: Long? = null
+
+        // Automatically record confirmed expenses/transfers if amount is valid
+        if (parsed.amountMinor != null && parsed.amountMinor > 0L && parsed.direction == TransactionDirection.DEBIT) {
+            val merchantOrRecipient = parsed.merchant.ifBlank { sourceDisplayName }
+            val note = if (finalRecordType == RecordType.TRANSFER) {
+                "Transfer to $merchantOrRecipient"
+            } else {
+                "Paid to $merchantOrRecipient"
+            }
+
+            val expense = Expense(
+                amountMinor = parsed.amountMinor,
+                currencyCode = parsed.currencyCode,
+                direction = parsed.direction,
+                recordType = finalRecordType,
+                merchant = parsed.merchant,
+                categoryId = suggestedCatId,
+                transactionAt = sbn.postTime,
+                createdAt = System.currentTimeMillis(),
+                sourcePackage = pkg,
+                transactionRef = parsed.transactionRef,
+                note = note,
+                confirmationStatus = ConfirmationStatus.CONFIRMED
+            )
+            createdExpenseId = repository.saveExpense(expense)
+        }
+
         // Build candidate entity
         val candidate = TransactionCandidateEntity(
             sourcePackage = pkg,
             notificationKey = notifKey,
-            // We store a minimal sanitized version of the text for user review
-            // and clear it after processing to avoid long-term storage of raw financial text
             notificationText = sanitizeForStorage(text),
             amountMinor = parsed.amountMinor,
             currencyCode = parsed.currencyCode,
             direction = parsed.direction,
-            recordType = parsed.recordType,
+            recordType = finalRecordType,
             merchant = parsed.merchant,
             transactionRef = parsed.transactionRef,
+            suggestedCategoryId = suggestedCatId,
             confidence = parsed.confidence,
             detectedAt = System.currentTimeMillis(),
-            notificationPostedAt = sbn.postTime
+            notificationPostedAt = sbn.postTime,
+            expenseId = createdExpenseId
         )
 
         val candidateId = repository.saveCandidate(candidate)
 
-        // Look up display name for notification
-        val sourceDisplayName = repository.appSources.let { _ ->
-            // We can't collect a flow here inline, so use a simple lookup
-            knownAppNames[pkg] ?: pkg.substringAfterLast('.')
+        // Show rich status bar notification in the system drawer
+        if (createdExpenseId != null && parsed.amountMinor != null) {
+            ExpenseNotificationHelper.showAutoAddedExpenseNotification(
+                context = this,
+                expenseId = createdExpenseId,
+                candidateId = candidateId,
+                amountMinor = parsed.amountMinor,
+                currencyCode = parsed.currencyCode,
+                label = label,
+                merchantOrRecipient = parsed.merchant.ifBlank { sourceDisplayName },
+                categoryName = categoryName,
+                notificationId = createdExpenseId.toInt().coerceIn(1, Int.MAX_VALUE)
+            )
+        } else {
+            ExpenseNotificationHelper.showExpenseDetectedNotification(
+                context = this,
+                candidateId = candidateId,
+                amountMinor = parsed.amountMinor,
+                merchant = parsed.merchant.takeIf { it.isNotBlank() },
+                sourceDisplayName = sourceDisplayName,
+                notificationId = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
+            )
         }
-
-        // Show user notification
-        ExpenseNotificationHelper.showExpenseDetectedNotification(
-            context = this,
-            candidateId = candidateId,
-            amountMinor = parsed.amountMinor,
-            merchant = parsed.merchant.takeIf { it.isNotBlank() },
-            sourceDisplayName = sourceDisplayName,
-            notificationId = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
-        )
 
         // Schedule cleanup of notification text after 10 minutes
         scope.launch {
@@ -138,7 +197,6 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
     /** Minimal sanitization to remove potentially sensitive content */
     private fun sanitizeForStorage(text: String): String {
-        // Keep only the transaction summary portion (first 200 chars)
         return text.take(200)
     }
 
@@ -149,6 +207,8 @@ class SpendlyNotificationListener : NotificationListenerService() {
         "net.one97.paytm" to "Paytm",
         "in.org.npci.upiapp" to "BHIM",
         "com.dreamplug.androidapp" to "CRED",
+        "in.amazon.mShop.android.shopping" to "Amazon Pay",
+        "com.amazon.mShop.android.shopping" to "Amazon Pay"
     )
 
     override fun onCreate() {
@@ -158,6 +218,6 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.i(TAG, "NotificationListenerService destroyed")
+        Log.i(TAG, "NotificationListenerService stopped")
     }
 }

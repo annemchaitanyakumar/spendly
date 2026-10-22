@@ -52,6 +52,15 @@ class ExpenseCalculationsTest {
             confirmationStatus = ConfirmationStatus.CONFIRMED
         )
         assertFalse("Failed payment must NOT count toward expense totals", failedPayment.isExpense)
+
+        val outgoingDebitTransfer = Expense(
+            amountMinor = 25000L,
+            transactionAt = 1000L,
+            direction = TransactionDirection.DEBIT,
+            recordType = RecordType.TRANSFER,
+            confirmationStatus = ConfirmationStatus.CONFIRMED
+        )
+        assertTrue("Confirmed outgoing debit transfer must count toward expense totals", outgoingDebitTransfer.isExpense)
     }
 
     @Test

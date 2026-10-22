@@ -1,12 +1,19 @@
 package com.spendly.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -31,6 +38,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Explicitly request notification posting permission on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+            }
+        }
 
         setContent {
             val mainVm: MainViewModel = spendlyViewModel()
@@ -76,6 +90,17 @@ fun SpendlyApp() {
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Backup permission request launcher for Android 13+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
@@ -85,7 +110,7 @@ fun SpendlyApp() {
                 onAddClick = { showAddExpense = true }
             )
         },
-        floatingActionButton = {},  // FAB is inside bottom bar area
+        floatingActionButton = {},
         contentWindowInsets = WindowInsets.navigationBars
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -137,18 +162,21 @@ fun SpendlyBottomBar(
     onAddClick: () -> Unit
 ) {
     NavigationBar(
-        tonalElevation = 0.dp
+        tonalElevation = 2.dp,
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         bottomNavItems.forEachIndexed { index, dest ->
-            // Insert FAB-like add button between Expenses and Insights
+            // Insert elevated tactile add button between Expenses and Insights
             if (index == 2) {
                 NavigationBarItem(
                     selected = false,
                     onClick = onAddClick,
                     icon = {
                         Surface(
-                            shape = MaterialTheme.shapes.medium,
+                            shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.primary,
+                            shadowElevation = 4.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
                             modifier = Modifier.size(48.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {

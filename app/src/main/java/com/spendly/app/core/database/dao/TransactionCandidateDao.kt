@@ -19,6 +19,9 @@ interface TransactionCandidateDao {
     @Query("SELECT * FROM transaction_candidates WHERE is_dismissed = 0 AND expense_id IS NULL ORDER BY detected_at DESC")
     fun observePending(): Flow<List<TransactionCandidateEntity>>
 
+    @Query("SELECT * FROM transaction_candidates WHERE is_dismissed = 0 ORDER BY detected_at DESC LIMIT :limit")
+    fun observeRecentCandidates(limit: Int = 5): Flow<List<TransactionCandidateEntity>>
+
     @Query("SELECT COUNT(*) FROM transaction_candidates WHERE is_dismissed = 0 AND expense_id IS NULL")
     fun observePendingCount(): Flow<Int>
 

@@ -39,7 +39,7 @@ data class Expense(
     val isExpense: Boolean
         get() = confirmationStatus == ConfirmationStatus.CONFIRMED &&
                 direction == TransactionDirection.DEBIT &&
-                recordType == RecordType.EXPENSE
+                (recordType == RecordType.EXPENSE || recordType == RecordType.TRANSFER)
 }
 
 /**

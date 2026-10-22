@@ -45,6 +45,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.spendly.app.DISMISS_CANDIDATE" />
+                <action android:name="com.spendly.app.UNDO_EXPENSE" />
             </intent-filter>
         </receiver>
 

@@ -42,7 +42,7 @@ interface ExpenseDao {
         SELECT * FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type IN ('EXPENSE')
+          AND record_type IN ('EXPENSE', 'TRANSFER')
         ORDER BY transaction_at DESC
     """)
     fun observeAllConfirmedExpenses(): Flow<List<ExpenseEntity>>
@@ -52,7 +52,7 @@ interface ExpenseDao {
         SELECT * FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type = 'EXPENSE'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
         ORDER BY transaction_at DESC
@@ -63,7 +63,7 @@ interface ExpenseDao {
         SELECT COALESCE(SUM(amount_minor), 0) FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type = 'EXPENSE'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
     """)
@@ -74,7 +74,7 @@ interface ExpenseDao {
         SELECT category_id, SUM(amount_minor) as total FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type = 'EXPENSE'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
         GROUP BY category_id
@@ -89,7 +89,7 @@ interface ExpenseDao {
         FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type = 'EXPENSE'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
         GROUP BY day_epoch
@@ -130,7 +130,7 @@ interface ExpenseDao {
         FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type = 'EXPENSE'
+          AND record_type IN ('EXPENSE', 'TRANSFER')
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
           AND merchant != ''
