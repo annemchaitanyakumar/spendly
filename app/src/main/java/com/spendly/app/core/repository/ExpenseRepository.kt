@@ -409,7 +409,8 @@ class ExpenseRepository(
     }
 
     suspend fun suggestCategoryId(merchant: String, recordType: RecordType): Long = withContext(Dispatchers.IO) {
-        if (recordType == RecordType.TRANSFER) return@withContext 13L // Transfers & UPI category
+        if (recordType == RecordType.TRANSFER || recordType == RecordType.INCOME) return@withContext 13L // Transfers & UPI category
+        if (recordType == RecordType.REFUND) return@withContext 4L // Shopping
         val lower = merchant.lowercase().trim()
         if (lower.isNotBlank()) {
             if (lower.contains("self") ||
@@ -422,7 +423,8 @@ class ExpenseRepository(
                 return@withContext 13L // Transfers & UPI
             }
             for ((keyword, catId) in DatabaseSeedData.merchantCategoryHints) {
-                if (lower.contains(keyword)) return@withContext catId
+                val regex = Regex("""\b${Regex.escape(keyword)}\b""", RegexOption.IGNORE_CASE)
+                if (regex.containsMatchIn(lower)) return@withContext catId
             }
             val existing = merchantDao.findByName(merchant)
             if (existing?.suggestedCategoryId != null) {

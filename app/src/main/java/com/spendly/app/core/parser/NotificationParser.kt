@@ -71,6 +71,10 @@ object SupportedPackages {
         "com.sbi.SBIFreedomPlus",                   // SBI Anywhere / Freedom
         "com.csam.icici.bank.imobile",              // ICICI iMobile
         "com.axis.mobile",                          // Axis Mobile
+        "com.msf.kbank.mobile",                     // Kotak Mahindra Bank
+        "com.kotak.bank.mobile",                    // Kotak Bank Mobile
+        "com.kotak811mobilebankingapp.instantsavingsupiscanandpayrecharge", // Kotak 811
+        "com.kotak.mobile",                         // Kotak Mobile
         "com.msf.koko",                             // Kotak 811
         "com.pnb.pnbone",                           // PNB ONE
         "com.bankofbaroda.mconnect",                // bob World / BoB
@@ -125,17 +129,17 @@ internal object CommonPatterns {
         RegexOption.IGNORE_CASE
     )
 
-    // Debit keywords
+    // Debit keywords (must indicate actual money leaving)
     val DEBIT_KEYWORDS = listOf(
         "debited", "debit", "paid", "payment of", "payment successful", "payment done",
         "spent", "transferred", "sent", "withdrawn", "purchase of", "charged",
-        "auto-debit", "emi paid", "successful payment", "payment"
+        "auto-debit", "emi paid", "successful payment"
     )
 
     // Credit keywords (money coming in)
     val CREDIT_KEYWORDS = listOf(
-        "credited", "credit", "received", "refund", "cashback",
-        "added to", "money received", "amount received", "deposit", "deposited"
+        "payment received", "money received", "amount received", "credited", "credit",
+        "received", "refund", "cashback", "added to", "deposit", "deposited"
     )
 
     // Failure keywords
@@ -156,19 +160,19 @@ internal object CommonPatterns {
 
     // 12-digit UPI reference number patterns (UTR / RRN / UPI Ref)
     val UPI_12_DIGIT_PATTERN = Regex(
-        """(?:UPI\s*(?:Ref\.?\s*(?:No\.?)?|Transaction\s*ID|Txn\s*ID)?\s*[:/ -]\s*|RRN\s*:?\s*|UTR\s*:?\s*)([0-9]{12})""",
+        """\b(?:UPI\s*(?:Ref\.?\s*(?:No\.?)?|Transaction\s*ID|Txn\s*ID)?\s*[:/ -]\s*|RRN\s*[:.-]?\s*|UTR\s*[:.-]?\s*)([0-9]{12})\b""",
         RegexOption.IGNORE_CASE
     )
     val UPI_SLASH_PATTERN = Regex(
         """UPI/[0-9]{10,16}/([A-Za-z0-9][A-Za-z0-9 &.'-]{1,35}?)""",
         RegexOption.IGNORE_CASE
     )
-    val UPI_REF_PATTERN = Regex("""(?:UPI\s*Ref\.?\s*(?:No\.?)?\s*:?\s*)([0-9]{10,20})""", RegexOption.IGNORE_CASE)
+    val UPI_REF_PATTERN = Regex("""\b(?:UPI\s*Ref\.?\s*(?:No\.?)?\s*[:.-]?\s*)([0-9]{10,20})\b""", RegexOption.IGNORE_CASE)
     val GENERIC_REF_PATTERN = Regex(
-        """(?:Ref\s*(?:No\.?|#)?\s*:?\s*|Txn\s*(?:ID|Ref|#)\.?\s*:?\s*|IMPS\s*/|NEFT\s*/)([A-Za-z0-9]{6,25})""",
+        """\b(?:Ref(?:erence)?\s*(?:No\.?|#)?\s*[:.-]?\s*|Txn\s*(?:ID|Ref|#)\.?\s*[:.-]?\s*|IMPS\s*/|NEFT\s*/)([A-Za-z0-9]{6,25})\b""",
         RegexOption.IGNORE_CASE
     )
-    val TXN_REF_PATTERN = Regex("""(?:Txn\s*(?:ID|Ref)\.?\s*:?\s*)([A-Z0-9]{6,20})""", RegexOption.IGNORE_CASE)
+    val TXN_REF_PATTERN = Regex("""\b(?:Txn\s*(?:ID|Ref)\.?\s*[:.-]?\s*)([A-Z0-9]{6,20})\b""", RegexOption.IGNORE_CASE)
 
     // Non-expense exclusion keywords (OTP, balance inquiries, promotional, spam)
     val OTP_KEYWORDS = listOf(
@@ -207,7 +211,7 @@ internal object CommonPatterns {
         "apply now", "pre-approved", "loan approved", "personal loan",
         "eligible for a loan", "credit limit increased", "congratulations! you",
         "reward points", "scratch card", "claim your prize", "flat 50% off",
-        "exclusive offer", "win up to"
+        "exclusive offer", "win up to", "invite friends"
     )
 
     val BALANCE_ENQUIRY_KEYWORDS = listOf(
@@ -224,7 +228,6 @@ internal object CommonPatterns {
         if (PAYMENT_REQUEST_KEYWORDS.any { it in lower }) return true
 
         // 3. Bill due notices, telecom/broadband bills, invoice reminders
-        // If it's a bill due reminder without an explicit past-tense debit ("debited by", "paid successfully"), ignore it!
         if (BILL_DUE_REMINDER_KEYWORDS.any { it in lower }) {
             val isConfirmedDebit = CONFIRMED_PAST_DEBIT_KEYWORDS.any { lower.contains(it) }
             if (!isConfirmedDebit) return true
@@ -257,7 +260,6 @@ internal object CommonPatterns {
 
     fun detectDirection(text: String): TransactionDirection {
         val lower = text.lowercase()
-        // Sanitize out non-credit uses of "credit" to prevent false CREDIT detection
         val sanitized = lower
             .replace("credit card", "cc")
             .replace("credit limit", "limit")
@@ -266,21 +268,56 @@ internal object CommonPatterns {
             .replace("avlbl credit", "limit")
             .replace("available credit", "limit")
 
-        val hasDebit = DEBIT_KEYWORDS.any { sanitized.contains(it) }
-        val hasCredit = CREDIT_KEYWORDS.any { sanitized.contains(it) }
+        // Explicit strong phrases
+        val strongCreditPhrases = listOf(
+            "credit alert", "payment received", "money received", "amount received",
+            "received from", "received in", "credited to", "credited with",
+            "amount credited", "has been credited", "was credited", "is credited",
+            "refund of", "refund initiated", "refund processed", "refund received"
+        )
 
-        if (hasDebit && !hasCredit) return TransactionDirection.DEBIT
-        if (hasCredit && !hasDebit) return TransactionDirection.CREDIT
+        val strongDebitPhrases = listOf(
+            "debit alert", "was debited", "is debited", "has been debited",
+            "debited by", "debited from", "debited for", "auto-debited",
+            "paid successfully", "successfully paid", "payment successful",
+            "payment done", "paid to", "paid at", "payment to", "payment of",
+            "spent at", "spent on", "transferred to", "sent to",
+            "paid rs", "paid ₹", "paid inr"
+        )
 
-        if (hasDebit && hasCredit) {
-            // E.g. "Your A/c XX2636 debited by Rs 1.00 ... amount credited to recipient" -> user account was DEBITED
-            if (sanitized.contains("debited") && (sanitized.contains("to a/c") || sanitized.contains("to vpa") || sanitized.contains("transferred to") || sanitized.contains("transfer to"))) {
-                return TransactionDirection.DEBIT
-            }
-            val debitIndex = DEBIT_KEYWORDS.map { sanitized.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: Int.MAX_VALUE
-            val creditIndex = CREDIT_KEYWORDS.map { sanitized.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: Int.MAX_VALUE
-            return if (debitIndex <= creditIndex) TransactionDirection.DEBIT else TransactionDirection.CREDIT
+        // Find earliest occurrence of strong indicators
+        val firstStrongCredit = strongCreditPhrases
+            .map { sanitized.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+
+        val firstStrongDebit = strongDebitPhrases
+            .map { sanitized.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+
+        if (firstStrongCredit != null && firstStrongDebit != null) {
+            return if (firstStrongCredit < firstStrongDebit) TransactionDirection.CREDIT else TransactionDirection.DEBIT
         }
+        if (firstStrongCredit != null) return TransactionDirection.CREDIT
+        if (firstStrongDebit != null) return TransactionDirection.DEBIT
+
+        // Fallback to keyword sets with position checking
+        val firstDebit = DEBIT_KEYWORDS
+            .map { sanitized.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+
+        val firstCredit = CREDIT_KEYWORDS
+            .map { sanitized.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+
+        if (firstDebit != null && firstCredit != null) {
+            return if (firstDebit < firstCredit) TransactionDirection.DEBIT else TransactionDirection.CREDIT
+        }
+        if (firstDebit != null) return TransactionDirection.DEBIT
+        if (firstCredit != null) return TransactionDirection.CREDIT
 
         return TransactionDirection.UNKNOWN
     }
@@ -301,7 +338,6 @@ internal object CommonPatterns {
         val lower = trimmed.lowercase()
         if (lower.contains("self") || lower.contains("account") || lower.contains("a/c")) return true
 
-        // Business terms indicate commercial merchants
         val businessKeywords = listOf(
             "store", "shop", "mart", "cafe", "restaurant", "bakery", "pharmacy",
             "ltd", "pvt", "limited", "enterprises", "solutions", "services",
@@ -313,7 +349,6 @@ internal object CommonPatterns {
         )
         if (businessKeywords.any { lower.contains(it) }) return false
 
-        // 2 to 4 name parts (e.g. Annem Chaitanya Kumar, Rahul Sharma)
         val words = trimmed.split(Regex("""\s+""")).filter { it.isNotBlank() }
         if (words.size in 2..4 && words.all { w -> w.all { it.isLetter() || it == '.' } }) {
             return true
@@ -335,9 +370,16 @@ internal object CommonPatterns {
         }
     }
 
+    // Pattern: Received [Rs 10] from <Sender> or credited ... from <Sender>
+    private val RECEIVED_FROM_PATTERN = Regex(
+        """(?:(?:received|credited)(?:\s+(?:(?:₹|Rs\.?\s*|INR\s*)[0-9,.]+\s*)?|\s+money\s+|\s+funds\s+|\s+alert\s*:\s*(?:(?:₹|Rs\.?\s*|INR\s*)[0-9,.]+\s*)?)from)\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,35}?)""" +
+        """(?:\s+(?:on|via|ref|upi|using|in|into|for|avl|amount|successfully|\.)\b|[\.,;]|\s*$)""",
+        RegexOption.IGNORE_CASE
+    )
+
     // Pattern 1: Paid/Sent/Transfer [Rs 500] to/at <Name/Merchant>
     private val PAID_TO_PATTERN = Regex(
-        """(?:paid|sent|transferred|transfer|payment of)\s+(?:(?:₹|Rs\.?\s*|INR\s*)[0-9,.]+\s+)?(?:to|at)\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,35}?)""" +
+        """(?:paid|sent|transferred|transfer|payment(?:\s+of)?|paying)\s+(?:(?:₹|Rs\.?\s*|INR\s*)[0-9,.]+\s+)?(?:to|at)\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,35}?)""" +
         """(?:\s+(?:on|via|ref|upi|using|from|for|avl)\b|[\.,;]|\s*$)""",
         RegexOption.IGNORE_CASE
     )
@@ -362,9 +404,9 @@ internal object CommonPatterns {
         RegexOption.IGNORE_CASE
     )
 
-    // Pattern 5: at/to <Merchant> (e.g. at Starbucks, at Reliance)
-    private val AT_TO_PATTERN = Regex(
-        """(?:at|to)\s+([A-Za-z][A-Za-z0-9 &.'-]{1,30}?)""" +
+    // Pattern 5: at <Merchant> (e.g. at Starbucks, at Reliance)
+    private val AT_PATTERN = Regex(
+        """\b(?:at|paid\s+at|spent\s+at)\s+([A-Za-z][A-Za-z0-9 &.'-]{1,30}?)""" +
         """(?:\s+(?:on|via|ref|upi|using|from|for|avl)\b|[\.,;]|\s*$)""",
         RegexOption.IGNORE_CASE
     )
@@ -374,7 +416,9 @@ internal object CommonPatterns {
         "avl bal", "available balance", "account", "a/c", "acct",
         "upi ref", "ref no", "statement", "download", "yono", "click",
         "helpline", "terms", "charges", "beneficiary", "credited to",
-        "debited from", "balance is", "not you", "call", "sms"
+        "debited from", "balance is", "not you", "call", "sms",
+        "view the", "below e-mail", "e-mailer", "mailer", "email", "view",
+        "account transfer", "alert", "notice", "update", "kotak811"
     )
 
     fun sanitizeMerchantName(name: String): String {
@@ -402,43 +446,50 @@ internal object CommonPatterns {
     }
 
     fun extractMerchant(text: String): String {
-        // Try UPI slash pattern: UPI/<ref>/<merchant> (e.g. UPI/429612345678/Sri Sai Store)
+        // 1. Received from pattern: "₹10.00 received from ANNEM RAMA..." -> "ANNEM RAMA"
+        val recvMatch = RECEIVED_FROM_PATTERN.find(text)?.groupValues?.get(1)?.trim()
+        if (!recvMatch.isNullOrBlank()) {
+            val cleaned = sanitizeMerchantName(recvMatch)
+            if (cleaned.isNotBlank()) return cleaned
+        }
+
+        // 2. UPI slash pattern: UPI/<ref>/<merchant> (e.g. UPI/429612345678/Sri Sai Store)
         val slashMatch = UPI_SLASH_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!slashMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(slashMatch)
             if (cleaned.isNotBlank()) return cleaned
         }
 
-        // Try VPA first (e.g. rahul@oksbi)
+        // 3. VPA pattern (e.g. rahul@oksbi)
         val vpaMatch = VPA_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!vpaMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(vpaMatch)
             if (cleaned.isNotBlank()) return cleaned
         }
 
-        // Try Amount paid to pattern (e.g. ₹1,499 paid to Electricity Board)
+        // 4. Amount paid to pattern (e.g. ₹1,499 paid to Electricity Board)
         val amountPaidMatch = AMOUNT_PAID_TO_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!amountPaidMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(amountPaidMatch)
             if (cleaned.isNotBlank()) return cleaned
         }
 
-        // Try Paid/Sent to pattern (e.g. Paid Rs 280 to Uber)
+        // 5. Paid/Sent to pattern (e.g. Paid Rs 280 to Uber)
         val paidMatch = PAID_TO_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!paidMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(paidMatch)
             if (cleaned.isNotBlank()) return cleaned
         }
 
-        // Try TRF to pattern
+        // 6. TRF to pattern
         val trfMatch = TRF_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!trfMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(trfMatch)
             if (cleaned.isNotBlank()) return cleaned
         }
 
-        // Try at/to pattern
-        val atMatch = AT_TO_PATTERN.find(text)?.groupValues?.get(1)?.trim()
+        // 7. At pattern (e.g. at Starbucks, at Reliance)
+        val atMatch = AT_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!atMatch.isNullOrBlank()) {
             val cleaned = sanitizeMerchantName(atMatch)
             if (cleaned.isNotBlank()) return cleaned
@@ -449,12 +500,19 @@ internal object CommonPatterns {
 
     fun extractRef(text: String): String? {
         val upi12 = UPI_12_DIGIT_PATTERN.find(text)?.groupValues?.get(1)
-        if (!upi12.isNullOrBlank()) return upi12
+        if (!upi12.isNullOrBlank() && upi12.length >= 10) return upi12
         val upiRef = UPI_REF_PATTERN.find(text)?.groupValues?.get(1)
-        if (!upiRef.isNullOrBlank()) return upiRef
+        if (!upiRef.isNullOrBlank() && upiRef.length >= 10) return upiRef
         val generic = GENERIC_REF_PATTERN.find(text)?.groupValues?.get(1)
-        if (!generic.isNullOrBlank()) return generic
-        return TXN_REF_PATTERN.find(text)?.groupValues?.get(1)
+        if (!generic.isNullOrBlank() && generic.length >= 6 &&
+            !generic.equals("erence", ignoreCase = true) &&
+            !generic.equals("number", ignoreCase = true) &&
+            generic.any { it.isDigit() }) {
+            return generic
+        }
+        val txn = TXN_REF_PATTERN.find(text)?.groupValues?.get(1)
+        if (!txn.isNullOrBlank() && txn.any { it.isDigit() }) return txn
+        return null
     }
 
     fun calculateConfidence(

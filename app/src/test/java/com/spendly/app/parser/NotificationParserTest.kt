@@ -483,4 +483,55 @@ class NotificationParserTest {
         assertEquals(smsResult?.amountMinor, emailResult?.amountMinor)
         assertEquals(smsResult?.transactionRef, emailResult?.transactionRef)
     }
+
+    // ── 16. Real-world Kotak & PhonePe Incoming Payment Tests ───────────
+
+    @Test
+    fun testKotakAppReceivedPaymentNotification() {
+        val kotakResult = registry.parse(
+            sourcePackage = "com.kotak.bank.mobile",
+            title = "Kotak811",
+            text = "₹10.00 received from ANNEM RAMA... Amount credited to XX2636. Check out details.",
+            bigText = null
+        )
+        assertNotNull(kotakResult)
+        assertEquals(1000L, kotakResult?.amountMinor)
+        assertEquals(TransactionDirection.CREDIT, kotakResult?.direction)
+        assertEquals(RecordType.INCOME, kotakResult?.recordType)
+        assertTrue(kotakResult!!.merchant.contains("ANNEM RAMA", ignoreCase = true))
+        assertFalse(kotakResult.merchant.contains("Check out", ignoreCase = true))
+    }
+
+    @Test
+    fun testKotakEmailNotificationParsing() {
+        val emailResult = registry.parse(
+            sourcePackage = "com.google.android.gm",
+            title = "Kotak811",
+            text = "UPI Credit Alert: ₹10.00 received in your Kotak A/c. Reference No: 429612345678. Click to view the below e-mailer.",
+            bigText = null
+        )
+        assertNotNull(emailResult)
+        assertEquals(1000L, emailResult?.amountMinor)
+        assertEquals(TransactionDirection.CREDIT, emailResult?.direction)
+        assertEquals(RecordType.INCOME, emailResult?.recordType)
+        assertNotEquals("erence", emailResult?.transactionRef)
+        assertEquals("429612345678", emailResult?.transactionRef)
+        assertFalse(emailResult!!.merchant.contains("view the below", ignoreCase = true))
+        assertFalse(emailResult.merchant.contains("e-mailer", ignoreCase = true))
+    }
+
+    @Test
+    fun testPhonePePaymentReceivedDirection() {
+        val phonePeResult = registry.parse(
+            sourcePackage = "com.phonepe.app",
+            title = "Payment Received",
+            text = "You have received ₹10 from ANNEM RAMA successfully.",
+            bigText = null
+        )
+        assertNotNull(phonePeResult)
+        assertEquals(1000L, phonePeResult?.amountMinor)
+        assertEquals(TransactionDirection.CREDIT, phonePeResult?.direction)
+        assertEquals(RecordType.INCOME, phonePeResult?.recordType)
+        assertTrue(phonePeResult!!.merchant.contains("ANNEM RAMA", ignoreCase = true))
+    }
 }

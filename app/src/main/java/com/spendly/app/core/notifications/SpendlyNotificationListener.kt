@@ -115,7 +115,19 @@ class SpendlyNotificationListener : NotificationListenerService() {
         }
 
         val sourceDisplayName = knownAppNames[pkg] ?: when {
-            SupportedPackages.isEmail(pkg) -> "Bank Email"
+            SupportedPackages.isEmail(pkg) -> {
+                when {
+                    title.contains("Kotak", ignoreCase = true) -> "Kotak Bank"
+                    title.contains("SBI", ignoreCase = true) -> "SBI"
+                    title.contains("HDFC", ignoreCase = true) -> "HDFC Bank"
+                    title.contains("ICICI", ignoreCase = true) -> "ICICI Bank"
+                    title.contains("Axis", ignoreCase = true) -> "Axis Bank"
+                    title.contains("PhonePe", ignoreCase = true) -> "PhonePe"
+                    title.contains("Google Pay", ignoreCase = true) || title.contains("GPay", ignoreCase = true) -> "Google Pay"
+                    title.contains("Paytm", ignoreCase = true) -> "Paytm"
+                    else -> "Bank Email"
+                }
+            }
             SupportedPackages.isSms(pkg) -> "Bank SMS"
             SupportedPackages.isBank(pkg) -> "Bank App"
             else -> pkg.substringAfterLast('.')
@@ -330,7 +342,11 @@ class SpendlyNotificationListener : NotificationListenerService() {
         "com.sbi.lotusintouch" to "SBI YONO",
         "com.csam.icici.bank.imobile" to "ICICI Bank",
         "com.axis.mobile" to "Axis Bank",
-        "com.msf.koko" to "Kotak Bank",
+        "com.msf.kbank.mobile" to "Kotak Bank",
+        "com.kotak.bank.mobile" to "Kotak Bank",
+        "com.kotak811mobilebankingapp.instantsavingsupiscanandpayrecharge" to "Kotak 811",
+        "com.kotak.mobile" to "Kotak Bank",
+        "com.msf.koko" to "Kotak 811",
         "com.pnb.pnbone" to "PNB ONE",
         "com.bankofbaroda.mconnect" to "Bank of Baroda"
     )

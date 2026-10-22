@@ -63,18 +63,28 @@ interface ExpenseDao {
         SELECT COALESCE(SUM(amount_minor), 0) FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type IN ('EXPENSE', 'TRANSFER')
+          AND record_type = 'EXPENSE'
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
     """)
     fun observeMonthlyTotal(startMillis: Long, endMillis: Long): Flow<Long>
+
+    @Query("""
+        SELECT COALESCE(SUM(amount_minor), 0) FROM expenses
+        WHERE confirmation_status = 'CONFIRMED'
+          AND direction = 'DEBIT'
+          AND record_type = 'EXPENSE'
+          AND transaction_at >= :startMillis
+          AND transaction_at < :endMillis
+    """)
+    fun observeMonthlyPurchasesTotal(startMillis: Long, endMillis: Long): Flow<Long>
 
     // ── Category totals for a period ────────────────────────────────
     @Query("""
         SELECT category_id, SUM(amount_minor) as total FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type IN ('EXPENSE', 'TRANSFER')
+          AND record_type = 'EXPENSE'
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
         GROUP BY category_id
@@ -209,7 +219,7 @@ interface ExpenseDao {
         FROM expenses
         WHERE confirmation_status = 'CONFIRMED'
           AND direction = 'DEBIT'
-          AND record_type IN ('EXPENSE', 'TRANSFER')
+          AND record_type = 'EXPENSE'
           AND transaction_at >= :startMillis
           AND transaction_at < :endMillis
         GROUP BY source_package
