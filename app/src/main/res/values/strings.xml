@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Spendly</string>
+    <string name="notification_listener_service_label">Spendly Transaction Detector</string>
+    <string name="notification_listener_service_description">Detects expenses from authorized financial app notifications</string>
+</resources>
