@@ -34,13 +34,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.*
+import com.spendly.app.feature.insights.InsightsScreen
 import com.spendly.app.theme.*
 import com.spendly.app.ui.components.*
 import com.spendly.app.ui.spendlyViewModel
 
 enum class HomeViewTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     OVERVIEW("Overview", Icons.Default.Dashboard),
-    CALENDAR("Calendar", Icons.Default.CalendarMonth)
+    CALENDAR("Calendar", Icons.Default.CalendarMonth),
+    INSIGHTS("Insights", Icons.Default.BarChart)
 }
 
 @Composable
@@ -178,6 +180,11 @@ fun HomeScreen(
                     canGoNext = viewModel.canGoToNextMonth(),
                     onEditExpense = { editingExpenseId = it.id }
                 )
+            }
+        } else if (selectedTab == HomeViewTab.INSIGHTS) {
+            // ── Financial Insights View ──────────────────────────────
+            item(key = "insights_view") {
+                InsightsScreen(contentPadding = PaddingValues(0.dp))
             }
         } else {
             // ── Auto-Detected / Auto-Logged Transaction Cards ─────────

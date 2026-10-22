@@ -9,6 +9,7 @@ import com.spendly.app.SpendlyApplication
 import com.spendly.app.feature.expenseform.AddExpenseViewModel
 import com.spendly.app.feature.home.HomeViewModel
 import com.spendly.app.feature.insights.InsightsViewModel
+import com.spendly.app.feature.notes.NotesViewModel
 import com.spendly.app.feature.settings.SettingsViewModel
 import com.spendly.app.feature.transactions.TransactionsViewModel
 
@@ -25,6 +26,8 @@ class SpendlyViewModelFactory(
                 HomeViewModel(container.expenseRepository) as T
             modelClass.isAssignableFrom(TransactionsViewModel::class.java) ->
                 TransactionsViewModel(container.expenseRepository) as T
+            modelClass.isAssignableFrom(NotesViewModel::class.java) ->
+                NotesViewModel(container.expenseRepository) as T
             modelClass.isAssignableFrom(InsightsViewModel::class.java) ->
                 InsightsViewModel(container.expenseRepository) as T
             modelClass.isAssignableFrom(AddExpenseViewModel::class.java) ->

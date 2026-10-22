@@ -25,9 +25,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.settings.ThemeMode
+import android.app.ActivityManager
 import com.spendly.app.feature.expenseform.AddExpenseSheet
 import com.spendly.app.feature.home.HomeScreen
 import com.spendly.app.feature.insights.InsightsScreen
+import com.spendly.app.feature.notes.NotesScreen
 import com.spendly.app.feature.settings.SettingsScreen
 import com.spendly.app.feature.transactions.TransactionsScreen
 import com.spendly.app.theme.SpendlyTheme
@@ -40,6 +42,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Set task description for Recent Apps switcher to display Spendly icon
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                setTaskDescription(
+                    ActivityManager.TaskDescription.Builder()
+                        .setLabel(getString(R.string.app_name))
+                        .setIcon(R.mipmap.ic_launcher)
+                        .setPrimaryColor(getColor(R.color.ic_launcher_bg))
+                        .build()
+                )
+            } catch (_: Exception) {}
+        }
 
         // Clear any old stacked notifications when opening the app
         try {
@@ -76,6 +91,7 @@ private fun isSystemInDarkTheme(): Boolean {
 
 sealed class NavDest(val route: String, val label: String, val icon: ImageVector) {
     object Home : NavDest("home", "Home", Icons.Default.Home)
+    object Notes : NavDest("notes", "Notes", Icons.Default.Notes)
     object Transactions : NavDest("transactions", "Expenses", Icons.Default.List)
     object Insights : NavDest("insights", "Insights", Icons.Default.BarChart)
     object Settings : NavDest("settings", "Settings", Icons.Default.Settings)
@@ -83,8 +99,8 @@ sealed class NavDest(val route: String, val label: String, val icon: ImageVector
 
 val bottomNavItems = listOf(
     NavDest.Home,
+    NavDest.Notes,
     NavDest.Transactions,
-    NavDest.Insights,
     NavDest.Settings
 )
 
@@ -152,6 +168,18 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                         contentPadding = padding,
                         onAddExpense = {
                             expenseIdToEdit = null
+                            showAddExpense = true
+                        },
+                        snackbarHostState = snackbarHostState
+                    )
+                    NavDest.Notes -> NotesScreen(
+                        contentPadding = padding,
+                        onAddExpense = {
+                            expenseIdToEdit = null
+                            showAddExpense = true
+                        },
+                        onEditExpense = { id ->
+                            expenseIdToEdit = id
                             showAddExpense = true
                         },
                         snackbarHostState = snackbarHostState

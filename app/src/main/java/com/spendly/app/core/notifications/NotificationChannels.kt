@@ -5,8 +5,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import com.spendly.app.MainActivity
+import com.spendly.app.R
 import com.spendly.app.core.common.CurrencyFormatter
 
 object NotificationChannels {
@@ -105,8 +107,14 @@ object ExpenseNotificationHelper {
         }
         bigTextBuilder.append("\n✓ Recorded in Spendly. Tap to edit or categorize.")
 
-        val notification = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+        val largeIcon = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (_: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_spendly)
             .setContentTitle(title)
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigTextBuilder.toString()))
@@ -125,7 +133,12 @@ object ExpenseNotificationHelper {
                 "❌ Undo",
                 undoPending
             )
-            .build()
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        val notification = builder.build()
 
         manager.notify(notificationId, notification)
     }
@@ -170,8 +183,14 @@ object ExpenseNotificationHelper {
         val contentTitle = "$amountStr • Possible payment detected"
         val contentText = if (!merchant.isNullOrBlank()) "From $merchant ($sourceDisplayName)" else "Detected from $sourceDisplayName"
 
-        val notification = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+        val largeIcon = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (_: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_spendly)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
             .setContentIntent(openPending)
@@ -179,7 +198,12 @@ object ExpenseNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .addAction(android.R.drawable.ic_input_add, "Add Expense", openPending)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPending)
-            .build()
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        val notification = builder.build()
 
         manager.notify(notificationId, notification)
     }
