@@ -157,7 +157,7 @@ interface ExpenseDao {
     @Query("""
         SELECT COUNT(*) FROM expenses
         WHERE amount_minor = :amountMinor
-          AND source_package = :sourcePackage
+          AND (:sourcePackage IS NULL OR source_package = :sourcePackage)
           AND ABS(transaction_at - :transactionAt) < 180000
     """)
     suspend fun countPotentialDuplicates(
@@ -165,6 +165,21 @@ interface ExpenseDao {
         sourcePackage: String?,
         transactionAt: Long
     ): Int
+
+    @Query("""
+        SELECT * FROM expenses
+        WHERE amount_minor = :amountMinor
+          AND ABS(transaction_at - :transactionAt) < :windowMs
+        LIMIT 1
+    """)
+    suspend fun findRecentDuplicateAnySource(
+        amountMinor: Long,
+        transactionAt: Long,
+        windowMs: Long = 180000L
+    ): ExpenseEntity?
+
+    @Query("UPDATE expenses SET merchant = :merchant, transaction_ref = COALESCE(:ref, transaction_ref), updated_at = :now WHERE id = :id")
+    suspend fun updateMerchantAndRef(id: Long, merchant: String, ref: String?, now: Long = System.currentTimeMillis())
 
     @Query("""
         SELECT COUNT(*) FROM expenses

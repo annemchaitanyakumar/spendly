@@ -39,7 +39,7 @@ class HomeViewModel(
                 combine(
                     repository.observeMonthSummary(year, month),
                     repository.observeRecentExpenses(8),
-                    repository.observeRecentCandidates(5)
+                    repository.observePendingCandidates()
                 ) { summary, recent, candidates ->
                     val (year2, month2) = _selectedMonth.value
                     HomeUiState(
@@ -64,6 +64,41 @@ class HomeViewModel(
     fun dismissCandidate(candidateId: Long) {
         viewModelScope.launch {
             repository.dismissCandidate(candidateId)
+        }
+    }
+
+    fun confirmCandidate(candidate: TransactionCandidate) {
+        viewModelScope.launch {
+            val isTransfer = candidate.recordType == RecordType.TRANSFER ||
+                    candidate.merchant.contains("transfer", ignoreCase = true)
+            val effectiveDirection = if (candidate.direction != TransactionDirection.UNKNOWN) {
+                candidate.direction
+            } else {
+                TransactionDirection.DEBIT
+            }
+            val effectiveRecordType = if (isTransfer) {
+                RecordType.TRANSFER
+            } else if (candidate.recordType != RecordType.UNKNOWN) {
+                candidate.recordType
+            } else {
+                RecordType.EXPENSE
+            }
+
+            val expense = Expense(
+                amountMinor = candidate.amountMinor ?: 0L,
+                currencyCode = candidate.currencyCode,
+                direction = effectiveDirection,
+                recordType = effectiveRecordType,
+                merchant = candidate.merchant,
+                categoryId = candidate.suggestedCategoryId ?: 20L,
+                transactionAt = System.currentTimeMillis(),
+                createdAt = System.currentTimeMillis(),
+                sourcePackage = candidate.sourcePackage,
+                transactionRef = candidate.transactionRef,
+                note = if (candidate.merchant.isNotBlank()) "Paid to ${candidate.merchant}" else "Detected payment",
+                confirmationStatus = ConfirmationStatus.CONFIRMED
+            )
+            repository.confirmCandidate(candidate.id, expense)
         }
     }
 

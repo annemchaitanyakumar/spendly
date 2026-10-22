@@ -279,4 +279,95 @@ class NotificationParserTest {
         assertEquals(RecordType.EXPENSE, result?.recordType)
         assertEquals("Amazon Pay", result?.parserName)
     }
+
+    // ── 10. Telecom / Utility Bill Due Reminders Must Be Excluded ─────
+
+    @Test
+    fun testAirtelWifiBillReminderIsStrictlyExcluded() {
+        val airtelResult = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "Airtel Alert",
+            text = "Dear Customer, Airtel Wi-Fi bill for account 0401234567 of Rs 943 is generated. Due date is 25-Oct. Pay now to avoid disconnection: airtel.in/pay",
+            bigText = null
+        )
+        assertNull("Airtel Wi-Fi bill generated notification must NOT be parsed as an expense", airtelResult)
+
+        val airtelBroadband = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "Airtel Thanks",
+            text = "Your Airtel broadband bill of Rs 825 is due on 24-Oct. Pay now to avoid late fee.",
+            bigText = null
+        )
+        assertNull("Broadband bill due reminder must NOT be parsed as an expense", airtelBroadband)
+    }
+
+    @Test
+    fun testElectricityBillDueReminderIsExcluded() {
+        val ebResult = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "Electricity Board",
+            text = "Your electricity bill of Rs 1,450 for CA 102938475 is due on 28-OCT-2026. Pay now.",
+            bigText = null
+        )
+        assertNull("Electricity bill due reminder must be excluded", ebResult)
+    }
+
+    @Test
+    fun testCreditCardBillDueReminderIsExcluded() {
+        val ccResult = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "HDFC Bank Alert",
+            text = "Total amount due for HDFC Credit Card ending 9876 is Rs 12,450.00. Minimum amount due: Rs 1,200. Due date: 24-Oct-26.",
+            bigText = null
+        )
+        assertNull("Credit card bill due notice must be excluded", ccResult)
+    }
+
+    @Test
+    fun testConfirmedPaidBillIsSuccessfullyParsed() {
+        val paidBill = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "Airtel Payment",
+            text = "Payment of Rs 943 for Airtel Wi-Fi account 0401234567 was successfully paid. Debited from A/C XX1234.",
+            bigText = null
+        )
+        assertNotNull(paidBill)
+        assertEquals(94300L, paidBill?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, paidBill?.direction)
+    }
+
+    // ── 11. Bank Credits & Merchant Sanitization ───────────────────────
+
+    @Test
+    fun testBankCreditSmsDirectionAndNoGarbageMerchant() {
+        val creditSms = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "Bank SMS",
+            text = "Dear Customer, your A/c XX2636 is credited with Rs 1.00 on 22-Oct-26. Check out details. Amount credited to a/c XX2636.",
+            bigText = null
+        )
+        assertNotNull(creditSms)
+        assertEquals(100L, creditSms?.amountMinor)
+        assertEquals(TransactionDirection.CREDIT, creditSms?.direction)
+        assertEquals(RecordType.INCOME, creditSms?.recordType)
+        // Must NOT extract "XX2636. Check out details. Amount credite" as merchant!
+        assertFalse(creditSms!!.merchant.contains("Check out", ignoreCase = true))
+        assertFalse(creditSms.merchant.contains("Amount credite", ignoreCase = true))
+        assertFalse(creditSms.merchant.startsWith("XX", ignoreCase = true))
+    }
+
+    @Test
+    fun testPersonTransferIsClassifiedAsTransfer() {
+        val transferResult = registry.parse(
+            sourcePackage = "com.phonepe.app",
+            title = "Payment Successful",
+            text = "Paid Rs 500 to Rahul Sharma on PhonePe",
+            bigText = null
+        )
+        assertNotNull(transferResult)
+        assertEquals(50000L, transferResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, transferResult?.direction)
+        assertEquals(RecordType.TRANSFER, transferResult?.recordType)
+        assertEquals("Rahul Sharma", transferResult?.merchant)
+    }
 }

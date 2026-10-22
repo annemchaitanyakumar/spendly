@@ -150,6 +150,7 @@ fun HomeScreen(
                 DetectedExpenseCard(
                     candidate = candidate,
                     onEdit = { reviewingCandidate = candidate },
+                    onConfirm = { viewModel.confirmCandidate(candidate) },
                     onUndo = { viewModel.undoAutoLoggedExpense(candidate) },
                     onDismiss = { viewModel.dismissCandidate(candidate.id) }
                 )
@@ -363,19 +364,29 @@ private fun NotificationPermissionBanner(
 private fun DetectedExpenseCard(
     candidate: TransactionCandidate,
     onEdit: () -> Unit,
+    onConfirm: () -> Unit,
     onUndo: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val isAutoLogged = candidate.expenseId != null
 
+    val isCredit = candidate.direction == TransactionDirection.CREDIT ||
+            candidate.recordType == RecordType.INCOME
     val isTransfer = candidate.recordType == RecordType.TRANSFER ||
             candidate.merchant.contains("transfer", ignoreCase = true)
 
-    val labelText = if (isTransfer) "Transfer" else "Paid"
-    val (badgeBg, badgeText) = if (isTransfer) {
-        Pair(Color(0xFFEDE7F6), Color(0xFF5E35B1))
-    } else {
-        Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
+    val labelText = when {
+        isCredit -> "Received"
+        isTransfer -> "Transfer"
+        candidate.recordType == RecordType.REFUND -> "Refund"
+        else -> "Paid"
+    }
+
+    val (badgeBg, badgeText) = when {
+        isCredit -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
+        isTransfer -> Pair(Color(0xFFEDE7F6), Color(0xFF5E35B1))
+        candidate.recordType == RecordType.REFUND -> Pair(Color(0xFFE1F5FE), Color(0xFF0277BD))
+        else -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
     }
 
     val sourceName = when {
@@ -386,6 +397,26 @@ private fun DetectedExpenseCard(
         candidate.sourcePackage.contains("dreamplug") -> "CRED"
         candidate.sourcePackage.contains("amazon") -> "Amazon Pay"
         else -> "Bank SMS"
+    }
+
+    val displayTitle = when {
+        candidate.merchant.isNotBlank() -> {
+            if (isTransfer && !candidate.merchant.startsWith("Transfer", ignoreCase = true)) {
+                "Transfer to ${candidate.merchant}"
+            } else {
+                candidate.merchant
+            }
+        }
+        isTransfer -> "Account Transfer"
+        isCredit -> "Received Money"
+        else -> "Debit • $sourceName"
+    }
+
+    val statusPillText = when {
+        isAutoLogged -> "Auto-Added to Expenses"
+        isCredit -> "Detected Income"
+        isTransfer -> "Detected Transfer"
+        else -> "Detected Payment"
     }
 
     Surface(
@@ -421,7 +452,7 @@ private fun DetectedExpenseCard(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = if (isAutoLogged) "Auto-Added to Expenses" else "Detected Payment",
+                            text = statusPillText,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF2E7D32)
@@ -454,11 +485,12 @@ private fun DetectedExpenseCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        val amountPrefix = if (isCredit) "+" else ""
                         Text(
-                            text = candidate.amountMinor?.let { CurrencyFormatter.formatMinor(it, candidate.currencyCode) } ?: "₹0.00",
+                            text = candidate.amountMinor?.let { "$amountPrefix${CurrencyFormatter.formatMinor(it, candidate.currencyCode)}" } ?: "₹0.00",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = if (isCredit) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
@@ -475,11 +507,7 @@ private fun DetectedExpenseCard(
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = if (isTransfer && !candidate.merchant.startsWith("Transfer", ignoreCase = true)) {
-                            "To: ${candidate.merchant.ifBlank { "Account" }}"
-                        } else {
-                            candidate.merchant.ifBlank { "Merchant Payment" }
-                        },
+                        text = displayTitle,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -493,27 +521,52 @@ private fun DetectedExpenseCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(
-                    onClick = onUndo,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Undo", style = MaterialTheme.typography.labelMedium)
-                }
+                if (isAutoLogged) {
+                    OutlinedButton(
+                        onClick = onUndo,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Undo", style = MaterialTheme.typography.labelMedium)
+                    }
 
-                Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
 
-                FilledTonalButton(
-                    onClick = onEdit,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Edit / Note", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    FilledTonalButton(
+                        onClick = onEdit,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Edit / Note", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Dismiss", style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    FilledTonalButton(
+                        onClick = onConfirm,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add as Expense", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

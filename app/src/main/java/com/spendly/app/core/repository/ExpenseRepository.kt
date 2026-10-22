@@ -3,7 +3,7 @@ package com.spendly.app.core.repository
 import com.spendly.app.core.common.*
 import com.spendly.app.core.database.DatabaseSeedData
 import com.spendly.app.core.database.dao.*
-import com.spendly.app.core.database.entity.TransactionCandidateEntity
+import com.spendly.app.core.database.entity.*
 import com.spendly.app.core.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +27,7 @@ class ExpenseRepository(
     suspend fun ensureCategoriesSeeded() = withContext(Dispatchers.IO) {
         categoryDao.insertAll(DatabaseSeedData.defaultCategories)
         appSourceDao.insertAll(DatabaseSeedData.knownPaymentApps)
+        candidateDao.dismissGarbageCandidates()
         deduplicateRecentExpenses()
     }
 
@@ -173,7 +174,7 @@ class ExpenseRepository(
     }
 
     suspend fun findDuplicateCandidate(
-        sourcePackage: String,
+        sourcePackage: String? = null,
         amountMinor: Long?,
         detectedAt: Long
     ) = withContext(Dispatchers.IO) {
@@ -204,6 +205,16 @@ class ExpenseRepository(
     suspend fun hasDuplicateExpense(amountMinor: Long, sourcePackage: String?, transactionAt: Long): Boolean =
         withContext(Dispatchers.IO) {
             expenseDao.countPotentialDuplicates(amountMinor, sourcePackage, transactionAt) > 0
+        }
+
+    suspend fun findRecentDuplicateExpenseAnySource(amountMinor: Long, transactionAt: Long): Expense? =
+        withContext(Dispatchers.IO) {
+            expenseDao.findRecentDuplicateAnySource(amountMinor, transactionAt)?.toDomain()
+        }
+
+    suspend fun updateExpenseMerchantAndRef(id: Long, merchant: String, ref: String?) =
+        withContext(Dispatchers.IO) {
+            expenseDao.updateMerchantAndRef(id, merchant, ref)
         }
 
     suspend fun getAllExpenses(): List<Expense> = withContext(Dispatchers.IO) {
@@ -263,8 +274,8 @@ class ExpenseRepository(
         val seen = mutableSetOf<String>()
 
         for (e in all) {
-            val timeBucket = e.transactionAt / 120_000L
-            val key = "${e.amountMinor}_${e.sourcePackage}_${e.merchant}_$timeBucket"
+            val timeBucket = e.transactionAt / 180_000L
+            val key = "${e.amountMinor}_$timeBucket"
             if (!seen.add(key)) {
                 toDelete.add(e.id)
             }

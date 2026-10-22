@@ -24,12 +24,11 @@ class PhonePeParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText)
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val ref = CommonPatterns.extractRef(fullText)
-
-        // Try specific merchant extraction
-        val merchant = paidToPattern.find(fullText)?.groupValues?.get(2)?.trim()
+        val rawMerchant = paidToPattern.find(fullText)?.groupValues?.get(2)?.trim()
             ?: CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
+        val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
             hasAmount = amount != null,
@@ -68,8 +67,9 @@ class GooglePayParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText)
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val merchant = CommonPatterns.extractMerchant(fullText)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -100,8 +100,9 @@ class PaytmParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText)
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val merchant = CommonPatterns.extractMerchant(fullText)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -132,8 +133,9 @@ class BhimParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val merchant = CommonPatterns.extractMerchant(fullText)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -164,8 +166,9 @@ class CredParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val merchant = CommonPatterns.extractMerchant(fullText)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -199,8 +202,9 @@ class AmazonPayParser : NotificationParser {
 
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
-        val merchant = CommonPatterns.extractMerchant(fullText)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -233,12 +237,13 @@ class GenericBankParser : NotificationParser {
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
 
         val direction = CommonPatterns.detectDirection(fullText)
-        val recordType = CommonPatterns.detectRecordType(fullText, direction)
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
 
         // Generic parser requires a direction clue to avoid false positives
         if (direction == TransactionDirection.UNKNOWN) return null
 
-        val merchant = CommonPatterns.extractMerchant(fullText)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(

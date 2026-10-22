@@ -105,19 +105,32 @@ class SpendlyNotificationListener : NotificationListenerService() {
             return
         }
 
-        // Deduplication: check if we already have a similar candidate in DB within 5 minutes
-        val existing = repository.findDuplicateCandidate(
-            pkg, parsed.amountMinor, System.currentTimeMillis()
+        // 1. Cross-app candidate deduplication: check if similar candidate exists within 3 minutes across ANY app
+        val existingCandidate = repository.findDuplicateCandidate(
+            sourcePackage = null, // Check across ALL packages
+            amountMinor = parsed.amountMinor,
+            detectedAt = System.currentTimeMillis()
         )
-        if (existing != null) {
-            Log.d(TAG, "Duplicate candidate detected for $pkg, skipping")
+        if (existingCandidate != null) {
+            Log.d(TAG, "Duplicate candidate detected across apps, skipping")
             return
         }
 
-        // Deduplication in Expenses table: check if an identical expense was already created
+        // 2. Cross-app expense deduplication: check if an identical expense was already created within 3 minutes
         if (parsed.amountMinor != null && parsed.amountMinor > 0L) {
-            if (repository.hasDuplicateExpense(parsed.amountMinor, pkg, sbn.postTime)) {
-                Log.d(TAG, "Duplicate expense already recorded for $pkg, skipping")
+            val duplicateExpense = repository.findRecentDuplicateExpenseAnySource(
+                parsed.amountMinor,
+                System.currentTimeMillis()
+            )
+            if (duplicateExpense != null) {
+                Log.d(TAG, "Duplicate expense already recorded across apps, skipping")
+                if (duplicateExpense.merchant.isBlank() && parsed.merchant.isNotBlank()) {
+                    repository.updateExpenseMerchantAndRef(
+                        duplicateExpense.id,
+                        parsed.merchant,
+                        parsed.transactionRef ?: duplicateExpense.transactionRef
+                    )
+                }
                 return
             }
             if (!parsed.transactionRef.isNullOrBlank() && repository.hasTransactionRef(parsed.transactionRef)) {
@@ -142,6 +155,12 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
         val finalRecordType = if (isTransfer) RecordType.TRANSFER else parsed.recordType
 
+        val effectiveDirection = if (finalRecordType == RecordType.TRANSFER) {
+            TransactionDirection.DEBIT
+        } else {
+            parsed.direction
+        }
+
         val label = when {
             isSelf -> "Self Transfer"
             finalRecordType == RecordType.TRANSFER -> "Transfer"
@@ -154,25 +173,31 @@ class SpendlyNotificationListener : NotificationListenerService() {
         val suggestedCatId = repository.suggestCategoryId(parsed.merchant, finalRecordType)
         val categoryName = repository.getCategoryName(suggestedCatId)
 
+        val displayPayee = when {
+            parsed.merchant.isNotBlank() -> parsed.merchant
+            isTransfer -> "Account Transfer"
+            finalRecordType == RecordType.INCOME -> "Received Money"
+            else -> sourceDisplayName
+        }
+
         var createdExpenseId: Long? = null
 
         // Automatically record confirmed expenses/transfers if amount is valid
-        if (parsed.amountMinor != null && parsed.amountMinor > 0L && parsed.direction == TransactionDirection.DEBIT) {
-            val merchantOrRecipient = parsed.merchant.ifBlank { sourceDisplayName }
+        if (parsed.amountMinor != null && parsed.amountMinor > 0L && effectiveDirection == TransactionDirection.DEBIT) {
             val note = when {
-                isSelf -> "Self Transfer to $merchantOrRecipient"
-                finalRecordType == RecordType.TRANSFER -> "Transfer to $merchantOrRecipient"
-                else -> "Paid to $merchantOrRecipient"
+                isSelf -> "Self Transfer to $displayPayee"
+                finalRecordType == RecordType.TRANSFER -> "Transfer to $displayPayee"
+                else -> "Paid to $displayPayee"
             }
 
             val expense = Expense(
                 amountMinor = parsed.amountMinor,
                 currencyCode = parsed.currencyCode,
-                direction = parsed.direction,
+                direction = effectiveDirection,
                 recordType = finalRecordType,
                 merchant = parsed.merchant,
                 categoryId = suggestedCatId,
-                transactionAt = sbn.postTime,
+                transactionAt = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
                 sourcePackage = pkg,
                 transactionRef = parsed.transactionRef,
@@ -189,7 +214,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
             notificationText = sanitizeForStorage(text),
             amountMinor = parsed.amountMinor,
             currencyCode = parsed.currencyCode,
-            direction = parsed.direction,
+            direction = effectiveDirection,
             recordType = finalRecordType,
             merchant = parsed.merchant,
             transactionRef = parsed.transactionRef,
@@ -211,7 +236,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 amountMinor = parsed.amountMinor,
                 currencyCode = parsed.currencyCode,
                 label = label,
-                merchantOrRecipient = parsed.merchant.ifBlank { sourceDisplayName },
+                merchantOrRecipient = displayPayee,
                 categoryName = categoryName,
                 notificationId = createdExpenseId.toInt().coerceIn(1, Int.MAX_VALUE)
             )
@@ -220,7 +245,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 context = this,
                 candidateId = candidateId,
                 amountMinor = parsed.amountMinor,
-                merchant = parsed.merchant.takeIf { it.isNotBlank() },
+                merchant = displayPayee,
                 sourceDisplayName = sourceDisplayName,
                 notificationId = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
             )
@@ -234,7 +259,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
                     amountMinor = parsed.amountMinor,
                     currencyCode = parsed.currencyCode,
                     label = label,
-                    merchant = parsed.merchant.ifBlank { sourceDisplayName },
+                    merchant = displayPayee,
                     categoryName = categoryName,
                     categoryIcon = catIcon,
                     sourceApp = sourceDisplayName,

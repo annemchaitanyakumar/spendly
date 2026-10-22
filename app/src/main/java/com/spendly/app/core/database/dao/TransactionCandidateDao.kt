@@ -37,20 +37,23 @@ interface TransactionCandidateDao {
     @Query("SELECT * FROM transaction_candidates WHERE notification_key = :notifKey LIMIT 1")
     suspend fun findByNotificationKey(notifKey: String): TransactionCandidateEntity?
 
-    // Deduplication check: same source, similar amount, within time window
+    // Deduplication check: cross-source or same source, similar amount, within time window
     @Query("""
         SELECT * FROM transaction_candidates
-        WHERE source_package = :sourcePackage
-          AND amount_minor = :amountMinor
+        WHERE amount_minor = :amountMinor
+          AND (:sourcePackage IS NULL OR source_package = :sourcePackage)
           AND ABS(detected_at - :detectedAt) < :windowMs
         LIMIT 1
     """)
     suspend fun findDuplicate(
-        sourcePackage: String,
+        sourcePackage: String?,
         amountMinor: Long?,
         detectedAt: Long,
         windowMs: Long = 300_000L
     ): TransactionCandidateEntity?
+
+    @Query("UPDATE transaction_candidates SET is_dismissed = 1 WHERE is_dismissed = 0 AND (merchant LIKE '%check out%' OR merchant LIKE '%credite%' OR merchant LIKE '%debite%')")
+    suspend fun dismissGarbageCandidates()
 
     @Query("DELETE FROM transaction_candidates WHERE detected_at < :cutoffMillis")
     suspend fun deleteOlderThan(cutoffMillis: Long)

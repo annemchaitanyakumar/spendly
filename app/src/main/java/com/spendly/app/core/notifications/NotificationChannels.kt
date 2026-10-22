@@ -84,10 +84,12 @@ object ExpenseNotificationHelper {
         )
 
         val amountStr = CurrencyFormatter.formatMinor(amountMinor, currencyCode)
-        val title = if (label == "Transfer") {
-            "$amountStr • Transfer to ${merchantOrRecipient.ifBlank { "Account" }}"
-        } else {
-            "$amountStr • Paid to ${merchantOrRecipient.ifBlank { "Merchant" }}"
+        val title = when (label) {
+            "Self Transfer" -> "$amountStr • Self Transfer to ${merchantOrRecipient.ifBlank { "Account" }}"
+            "Transfer" -> "$amountStr • Transfer to ${merchantOrRecipient.ifBlank { "Account" }}"
+            "Received" -> "+$amountStr • Received from ${merchantOrRecipient.ifBlank { "Sender" }}"
+            "Refund" -> "+$amountStr • Refund from ${merchantOrRecipient.ifBlank { "Merchant" }}"
+            else -> "$amountStr • Paid to ${merchantOrRecipient.ifBlank { "Debit" }}"
         }
 
         val contentText = "Auto-added to $categoryName • Tap to edit or categorize"
