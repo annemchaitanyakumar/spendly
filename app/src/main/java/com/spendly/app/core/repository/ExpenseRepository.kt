@@ -309,10 +309,30 @@ class ExpenseRepository(
             expenseDao.countPotentialDuplicates(amountMinor, sourcePackage, transactionAt) > 0
         }
 
-    suspend fun findRecentDuplicateExpenseAnySource(amountMinor: Long, transactionAt: Long): Expense? =
-        withContext(Dispatchers.IO) {
-            expenseDao.findRecentDuplicateAnySource(amountMinor, transactionAt)?.toDomain()
+    suspend fun findRecentDuplicateExpenseAnySource(
+        amountMinor: Long,
+        transactionAt: Long,
+        windowMs: Long = 300_000L
+    ): Expense? = withContext(Dispatchers.IO) {
+        val allCategories = categoryDao.getAll().associateBy { it.id }
+        expenseDao.findRecentDuplicateAnySource(amountMinor, transactionAt, windowMs)?.let { entity ->
+            val cat = entity.categoryId?.let { allCategories[it] }
+            entity.toDomain(cat)
         }
+    }
+
+    suspend fun findByTransactionRef(ref: String): Expense? = withContext(Dispatchers.IO) {
+        if (ref.isBlank()) return@withContext null
+        val allCategories = categoryDao.getAll().associateBy { it.id }
+        expenseDao.findByTransactionRef(ref)?.let { entity ->
+            val cat = entity.categoryId?.let { allCategories[it] }
+            entity.toDomain(cat)
+        }
+    }
+
+    suspend fun updateExpenseSourcePackage(id: Long, sourcePackage: String) = withContext(Dispatchers.IO) {
+        expenseDao.updateSourcePackage(id, sourcePackage)
+    }
 
     suspend fun updateExpenseMerchantAndRef(id: Long, merchant: String, ref: String?) =
         withContext(Dispatchers.IO) {

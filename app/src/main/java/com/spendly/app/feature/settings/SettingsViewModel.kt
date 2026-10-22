@@ -167,19 +167,20 @@ class SettingsViewModel(
         }
     }
 
-    fun triggerSimulatedLiveAlert(result: ParserDebugResult) {
+    fun triggerSimulatedNotification(context: android.content.Context, result: ParserDebugResult) {
         val amount = result.amountMinor ?: 45000L
         val merchant = result.merchant.ifBlank { "Starbucks" }
-        com.spendly.app.core.livealert.LiveAlertManager.postAlert(
-            com.spendly.app.core.livealert.LiveAlertData(
-                amountMinor = amount,
-                currencyCode = result.currencyCode,
-                label = if (result.recordType == "TRANSFER") "Transfer" else "Paid",
-                merchant = merchant,
-                categoryName = if (result.recordType == "TRANSFER") "Transfers & UPI" else "Food & Dining",
-                categoryIcon = if (result.recordType == "TRANSFER") "swap_horiz" else "restaurant",
-                sourceApp = result.parserName.ifBlank { "Live Detection" }
-            )
+        com.spendly.app.core.notifications.ExpenseNotificationHelper.showAutoAddedExpenseNotification(
+            context = context,
+            expenseId = 999999L,
+            candidateId = 999999L,
+            amountMinor = amount,
+            currencyCode = result.currencyCode,
+            label = if (result.recordType == "TRANSFER") "Transfer" else "Paid",
+            merchantOrRecipient = merchant,
+            categoryName = if (result.recordType == "TRANSFER") "Transfers & UPI" else "Food & Dining",
+            sourceDisplayName = result.parserName.ifBlank { "Test Notification" },
+            transactionRef = "429612345678"
         )
     }
 }

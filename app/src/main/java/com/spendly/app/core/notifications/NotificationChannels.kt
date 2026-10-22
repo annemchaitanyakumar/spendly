@@ -20,7 +20,7 @@ object NotificationChannels {
             DETECTION_CHANNEL_NAME,
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "High priority notifications for auto-recorded payments and transfers"
+            description = "High priority notifications for auto-recorded payments, transfers, and credits"
             enableVibration(true)
             setShowBadge(true)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
@@ -40,7 +40,7 @@ object ExpenseNotificationHelper {
     const val EXTRA_NOTIFICATION_ID = "notification_id"
 
     /**
-     * Post a high-priority system status bar notification when a spend is automatically recorded.
+     * Post an enhanced, high-priority system status bar notification when a spend/transfer is recorded.
      */
     fun showAutoAddedExpenseNotification(
         context: Context,
@@ -51,11 +51,13 @@ object ExpenseNotificationHelper {
         label: String = "Paid",
         merchantOrRecipient: String,
         categoryName: String,
+        sourceDisplayName: String = "App",
+        transactionRef: String? = null,
         notificationId: Int = expenseId.toInt().coerceIn(1, Int.MAX_VALUE)
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Intent to open MainActivity to view/edit the expense
+        // Intent to open MainActivity and directly show edit sheet for this expense
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN_EXPENSE
             putExtra(EXTRA_EXPENSE_ID, expenseId)
@@ -85,22 +87,29 @@ object ExpenseNotificationHelper {
 
         val amountStr = CurrencyFormatter.formatMinor(amountMinor, currencyCode)
         val title = when (label) {
-            "Self Transfer" -> "$amountStr • Self Transfer to ${merchantOrRecipient.ifBlank { "Account" }}"
-            "Transfer" -> "$amountStr • Transfer to ${merchantOrRecipient.ifBlank { "Account" }}"
-            "Received" -> "+$amountStr • Received from ${merchantOrRecipient.ifBlank { "Sender" }}"
-            "Refund" -> "+$amountStr • Refund from ${merchantOrRecipient.ifBlank { "Merchant" }}"
-            else -> "$amountStr • Paid to ${merchantOrRecipient.ifBlank { "Debit" }}"
+            "Self Transfer" -> "🔄 Self Transfer $amountStr to ${merchantOrRecipient.ifBlank { "Account" }}"
+            "Transfer" -> "🔄 Transfer $amountStr to ${merchantOrRecipient.ifBlank { "Account" }}"
+            "Received", "Credited" -> "💰 Credited +$amountStr from ${merchantOrRecipient.ifBlank { "Sender" }}"
+            "Refund" -> "💰 Refund +$amountStr from ${merchantOrRecipient.ifBlank { "Merchant" }}"
+            else -> "🛍️ Paid $amountStr to ${merchantOrRecipient.ifBlank { "Shop" }}"
         }
 
-        val contentText = "Auto-added to $categoryName • Tap to edit or categorize"
+        val contentText = "📂 $categoryName • via $sourceDisplayName"
 
-        val bigText = "$title\nAuto-recorded in Spendly under $categoryName. You can tap below to adjust category or undo."
+        val bigTextBuilder = StringBuilder()
+        bigTextBuilder.append(title).append("\n")
+        bigTextBuilder.append("📂 Category: ").append(categoryName).append("\n")
+        bigTextBuilder.append("📱 Source: via ").append(sourceDisplayName)
+        if (!transactionRef.isNullOrBlank()) {
+            bigTextBuilder.append("\n🔢 Ref/UTR: ").append(transactionRef)
+        }
+        bigTextBuilder.append("\n✓ Recorded in Spendly. Tap to edit or categorize.")
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigTextBuilder.toString()))
             .setContentIntent(openPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -108,12 +117,12 @@ object ExpenseNotificationHelper {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
                 android.R.drawable.ic_menu_edit,
-                "Edit / Note",
+                "✏️ Edit Spend",
                 openPending
             )
             .addAction(
                 android.R.drawable.ic_menu_delete,
-                "Undo / Remove",
+                "❌ Undo",
                 undoPending
             )
             .build()

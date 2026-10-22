@@ -1,6 +1,7 @@
 package com.spendly.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -61,6 +62,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
 }
 
 @Composable
@@ -87,6 +93,21 @@ val bottomNavItems = listOf(
 fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
     var currentDest by remember { mutableStateOf<NavDest>(NavDest.Home) }
     var showAddExpense by remember { mutableStateOf(false) }
+    var expenseIdToEdit by remember { mutableStateOf<Long?>(null) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? ComponentActivity
+
+    LaunchedEffect(activity?.intent) {
+        val intent = activity?.intent
+        if (intent != null && intent.action == com.spendly.app.core.notifications.ExpenseNotificationHelper.ACTION_OPEN_EXPENSE) {
+            val expId = intent.getLongExtra(com.spendly.app.core.notifications.ExpenseNotificationHelper.EXTRA_EXPENSE_ID, -1L)
+            if (expId > 0L) {
+                expenseIdToEdit = expId
+                showAddExpense = true
+            }
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -108,7 +129,10 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
             SpendlyBottomBar(
                 current = currentDest,
                 onSelect = { currentDest = it },
-                onAddClick = { showAddExpense = true }
+                onAddClick = {
+                    expenseIdToEdit = null
+                    showAddExpense = true
+                }
             )
         },
         floatingActionButton = {},
@@ -126,12 +150,18 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                 when (dest) {
                     NavDest.Home -> HomeScreen(
                         contentPadding = padding,
-                        onAddExpense = { showAddExpense = true },
+                        onAddExpense = {
+                            expenseIdToEdit = null
+                            showAddExpense = true
+                        },
                         snackbarHostState = snackbarHostState
                     )
                     NavDest.Transactions -> TransactionsScreen(
                         contentPadding = padding,
-                        onAddExpense = { showAddExpense = true },
+                        onAddExpense = {
+                            expenseIdToEdit = null
+                            showAddExpense = true
+                        },
                         snackbarHostState = snackbarHostState
                     )
                     NavDest.Insights -> InsightsScreen(
@@ -143,28 +173,19 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                     )
                 }
             }
-
-            // OxygenOS Live Alerts & Apple Dynamic Island floating capsule alert
-            com.spendly.app.ui.components.DynamicIslandAlert(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp),
-                onUndoExpense = { expenseId ->
-                    mainVm.undoExpense(expenseId)
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Transaction undone")
-                    }
-                }
-            )
         }
     }
 
     if (showAddExpense) {
         AddExpenseSheet(
-            onDismiss = { showAddExpense = false },
+            expenseIdToEdit = expenseIdToEdit,
+            onDismiss = {
+                showAddExpense = false
+                expenseIdToEdit = null
+            },
             onSaved = {
                 showAddExpense = false
+                expenseIdToEdit = null
             }
         )
     }

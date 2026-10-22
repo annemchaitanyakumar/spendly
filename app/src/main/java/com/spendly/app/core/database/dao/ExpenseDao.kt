@@ -189,6 +189,18 @@ interface ExpenseDao {
     """)
     suspend fun countByTransactionRef(ref: String): Int
 
+    @Query("""
+        SELECT * FROM expenses
+        WHERE transaction_ref = :ref
+          AND transaction_ref IS NOT NULL
+          AND transaction_ref != ''
+        LIMIT 1
+    """)
+    suspend fun findByTransactionRef(ref: String): ExpenseEntity?
+
+    @Query("UPDATE expenses SET source_package = :sourcePackage, updated_at = :now WHERE id = :id")
+    suspend fun updateSourcePackage(id: Long, sourcePackage: String, now: Long = System.currentTimeMillis())
+
     // ── Update confirmation status ───────────────────────────────────
     @Query("UPDATE expenses SET confirmation_status = :status, updated_at = :now WHERE id = :id")
     suspend fun updateConfirmationStatus(id: Long, status: ConfirmationStatus, now: Long = System.currentTimeMillis())

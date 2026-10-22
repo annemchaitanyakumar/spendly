@@ -487,17 +487,17 @@ fun SettingsScreen(
                                         Text(res.summary, style = MaterialTheme.typography.bodySmall)
 
                                         Button(
-                                            onClick = { viewModel.triggerSimulatedLiveAlert(res) },
+                                            onClick = { viewModel.triggerSimulatedNotification(context, res) },
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = Color(0xFF00E676),
-                                                contentColor = Color.Black
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
                                             ),
                                             shape = MaterialTheme.shapes.medium,
                                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.Bolt, null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Notifications, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(6.dp))
-                                            Text("Preview OxygenOS Live Alert", fontWeight = FontWeight.Bold)
+                                            Text("Test System Notification Alert", fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }

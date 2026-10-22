@@ -370,4 +370,117 @@ class NotificationParserTest {
         assertEquals(RecordType.TRANSFER, transferResult?.recordType)
         assertEquals("Rahul Sharma", transferResult?.merchant)
     }
+
+    // ── 12. Strict Whitelist: Non-financial apps must be completely ignored ─
+
+    @Test
+    fun testUnverifiedAppsAreStrictlyRejectedEvenWithFinancialKeywords() {
+        // WhatsApp chat mentioning money
+        val whatsappMsg = registry.parse(
+            sourcePackage = "com.whatsapp",
+            title = "Mom",
+            text = "Please pay Rs. 500 to the grocery shop today",
+            bigText = null
+        )
+        assertNull("WhatsApp messages must be strictly rejected", whatsappMsg)
+
+        // Instagram message
+        val instaMsg = registry.parse(
+            sourcePackage = "com.instagram.android",
+            title = "Direct Message",
+            text = "Paid ₹1,200 for this jacket yesterday!",
+            bigText = null
+        )
+        assertNull("Instagram messages must be strictly rejected", instaMsg)
+
+        // Telegram message
+        val telegramMsg = registry.parse(
+            sourcePackage = "org.telegram.messenger",
+            title = "Crypto Channel",
+            text = "Credited $500 to your wallet",
+            bigText = null
+        )
+        assertNull("Telegram messages must be strictly rejected", telegramMsg)
+    }
+
+    // ── 13. Bank Email Debit Notification Parsing ──────────────────────
+
+    @Test
+    fun testBankEmailDebitConfirmationParsing() {
+        val emailResult = registry.parse(
+            sourcePackage = "com.google.android.gm",
+            title = "HDFC Bank: Debit Alert",
+            text = "Alert: INR 50.00 was debited from your account **1234 for payment to Sri Sai Store. UPI Ref: 429612345678.",
+            bigText = null
+        )
+        assertNotNull(emailResult)
+        assertEquals(5000L, emailResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, emailResult?.direction)
+        assertEquals(RecordType.EXPENSE, emailResult?.recordType)
+        assertEquals("429612345678", emailResult?.transactionRef)
+        assertTrue(emailResult!!.merchant.contains("Sri Sai Store", ignoreCase = true))
+    }
+
+    // ── 14. Official Bank App Notification Parsing ─────────────────────
+
+    @Test
+    fun testOfficialBankAppNotificationParsing() {
+        val sbiResult = registry.parse(
+            sourcePackage = "com.sbi.lotusintouch",
+            title = "SBI YONO Alert",
+            text = "Payment of Rs. 750.00 to DMart was successful. Txn ID: 987654321.",
+            bigText = null
+        )
+        assertNotNull(sbiResult)
+        assertEquals(75000L, sbiResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, sbiResult?.direction)
+        assertEquals(RecordType.EXPENSE, sbiResult?.recordType)
+        assertTrue(sbiResult!!.merchant.contains("DMart", ignoreCase = true))
+    }
+
+    // ── 15. 3-Way Multi-Source Matching: PhonePe + Bank SMS + Bank Email ─
+
+    @Test
+    fun testThreeWayMultiSourceConsistencyForShopPayment() {
+        // 1. User pays ₹50 at shop via PhonePe
+        val phonePeResult = registry.parse(
+            sourcePackage = "com.phonepe.app",
+            title = "Payment Successful",
+            text = "Paid ₹50 to Sri Sai Store",
+            bigText = null
+        )
+        assertNotNull(phonePeResult)
+        assertEquals(5000L, phonePeResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, phonePeResult?.direction)
+        assertEquals(RecordType.EXPENSE, phonePeResult?.recordType)
+        assertTrue(phonePeResult!!.merchant.contains("Sri Sai Store", ignoreCase = true))
+
+        // 2. Bank SMS arrives with ₹50 and 12-digit UPI reference
+        val smsResult = registry.parse(
+            sourcePackage = "com.google.android.apps.messaging",
+            title = "SBI Alert",
+            text = "Dear SBI User, your A/c XX2636 is debited by Rs 50.00 on 22Oct26 transfer to Sri Sai Store Ref No 429612345678 - SBI",
+            bigText = null
+        )
+        assertNotNull(smsResult)
+        assertEquals(5000L, smsResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, smsResult?.direction)
+        assertEquals("429612345678", smsResult?.transactionRef)
+
+        // 3. Bank confirmation Email arrives with ₹50 and UPI transaction ID
+        val emailResult = registry.parse(
+            sourcePackage = "com.google.android.gm",
+            title = "Debit Alert - SBI",
+            text = "Your account XX2636 was debited for Rs. 50.00 paid to Sri Sai Store. UPI Transaction ID: 429612345678.",
+            bigText = null
+        )
+        assertNotNull(emailResult)
+        assertEquals(5000L, emailResult?.amountMinor)
+        assertEquals(TransactionDirection.DEBIT, emailResult?.direction)
+        assertEquals("429612345678", emailResult?.transactionRef)
+
+        // Both SMS and Email match the exact same amount and exact same UPI 12-digit reference
+        assertEquals(smsResult?.amountMinor, emailResult?.amountMinor)
+        assertEquals(smsResult?.transactionRef, emailResult?.transactionRef)
+    }
 }

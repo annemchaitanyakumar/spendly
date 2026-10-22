@@ -6,22 +6,27 @@ import android.util.Log
 import com.spendly.app.core.database.entity.TransactionCandidateEntity
 import com.spendly.app.core.model.*
 import com.spendly.app.core.parser.CommonPatterns
-import com.spendly.app.core.parser.NotificationParserRegistry
-import com.spendly.app.core.repository.ExpenseRepository
+import com.spendly.app.core.parser.ParsedTransaction
+import com.spendly.app.core.parser.SupportedPackages
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Android NotificationListenerService implementation.
  *
- * IMPORTANT:
- * - Requires the user to explicitly grant notification access via Android settings.
- * - Only reads notification content from packages the user has authorized.
- * - Does NOT access private app data, SMS inboxes, or financial account details.
- * - Automatically records expenses / transfers into the local Room database and
- *   posts high-priority system notifications in the Android notification drawer.
+ * Strictly processes financial transactions from:
+ * 1. Bank and UPI SMS (Messages apps)
+ * 2. Official Bank confirmation Emails (Gmail, Outlook, Yahoo)
+ * 3. Official Bank Apps (HDFC, SBI, ICICI, Axis, Kotak, PNB, BoB, etc.)
+ * 4. Verified UPI Apps (PhonePe, Google Pay, Paytm, BHIM, CRED, Amazon Pay, etc.)
+ *
+ * Implements strict 3-way deduplication (PhonePe + SMS + Email) via exact
+ * 12-digit transaction reference matching and 5-minute fuzzy time-window matching.
+ * Live alert popups are completely removed in favor of rich system drawer notifications.
  */
 class SpendlyNotificationListener : NotificationListenerService() {
 
@@ -33,7 +38,10 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Thread-safe Cooldown map: prevent re-prompting the same notification key or fingerprint within a 5-minute window
+    // Thread-safe Mutex to prevent concurrency race conditions when PhonePe, SMS, and Email fire concurrently
+    private val dedupeMutex = Mutex()
+
+    // Thread-safe Cooldown map: prevent re-prompting the same notification key or fingerprint within 5 minutes
     private val recentlyProcessed = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val COOLDOWN_MS = 300_000L  // 5 minutes
 
@@ -42,7 +50,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
         val last = recentlyProcessed[key] ?: 0L
         if (now - last < COOLDOWN_MS) return true
         recentlyProcessed[key] = now
-        if (recentlyProcessed.size > 200) {
+        if (recentlyProcessed.size > 300) {
             val cutoff = now - COOLDOWN_MS
             recentlyProcessed.entries.removeIf { it.value < cutoff }
         }
@@ -51,28 +59,32 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "SpendlyNotifListener"
-        private const val CONFIDENCE_THRESHOLD = 0.4f
+        private const val CONFIDENCE_THRESHOLD = 0.35f
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
         val pkg = sbn.packageName ?: return
 
-        // Skip our own notifications to avoid any recursion
+        // Skip our own notifications
         if (pkg == packageName || pkg == "com.spendly.app" || pkg == "com.spendly.app.debug") return
+
+        // STRICT REQUIREMENT: Only process notifications from verified SMS, Email, Bank, and UPI packages
+        if (!SupportedPackages.isSupported(pkg)) {
+            return
+        }
 
         scope.launch {
             try {
                 processNotification(sbn, pkg)
             } catch (e: Exception) {
-                // Never crash the listener
                 Log.w(TAG, "Error processing notification from $pkg: ${e.message}")
             }
         }
     }
 
     private suspend fun processNotification(sbn: StatusBarNotification, pkg: String) {
-        // Check if this source is user-enabled
+        // Check if user disabled this source in app settings
         if (!repository.isSourceEnabled(pkg)) return
 
         val extras = sbn.notification?.extras ?: return
@@ -80,123 +92,151 @@ class SpendlyNotificationListener : NotificationListenerService() {
         val text = extras.getCharSequence("android.text")?.toString() ?: ""
         val bigText = extras.getCharSequence("android.bigText")?.toString()
 
-        // Skip if both title and text are empty
         if (title.isBlank() && text.isBlank()) return
 
-        // Cooldown: skip if same notification key was recently processed
         val notifKey = sbn.key ?: "${pkg}_${sbn.id}"
         if (isRecentlyProcessed(notifKey)) return
-
-        // Check if this notification key was already stored in DB
         if (repository.findCandidateByNotifKey(notifKey) != null) return
 
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
 
-        // Parse the notification
+        // Parse notification text strictly using parser registry
         val parsed = parserRegistry.parse(pkg, title, text, bigText) ?: return
 
-        // Require minimum confidence
         if (parsed.confidence < CONFIDENCE_THRESHOLD) return
+        if (parsed.amountMinor == null || parsed.amountMinor <= 0L) return
+        if (parsed.direction == TransactionDirection.UNKNOWN) return
+        if (parsed.recordType == RecordType.UNKNOWN || parsed.recordType == RecordType.FAILED) return
 
-        // Fingerprint deduplication: package + amount + merchant
-        val contentFingerprint = "${pkg}_${parsed.amountMinor}_${parsed.merchant.lowercase().trim()}"
-        if (isRecentlyProcessed(contentFingerprint)) {
+        val contentFingerprint = "${parsed.amountMinor}_${parsed.transactionRef ?: ""}"
+        if (contentFingerprint.isNotBlank() && isRecentlyProcessed(contentFingerprint)) {
             Log.d(TAG, "Duplicate fingerprint $contentFingerprint detected, skipping")
             return
         }
 
-        // 1. Cross-app candidate deduplication: check if similar candidate exists within 3 minutes across ANY app
-        val existingCandidate = repository.findDuplicateCandidate(
-            sourcePackage = null, // Check across ALL packages
-            amountMinor = parsed.amountMinor,
-            detectedAt = System.currentTimeMillis()
-        )
-        if (existingCandidate != null) {
-            Log.d(TAG, "Duplicate candidate detected across apps, skipping")
-            return
+        val sourceDisplayName = knownAppNames[pkg] ?: when {
+            SupportedPackages.isEmail(pkg) -> "Bank Email"
+            SupportedPackages.isSms(pkg) -> "Bank SMS"
+            SupportedPackages.isBank(pkg) -> "Bank App"
+            else -> pkg.substringAfterLast('.')
         }
 
-        // 2. Cross-app expense deduplication: check if an identical expense was already created within 3 minutes
-        if (parsed.amountMinor != null && parsed.amountMinor > 0L) {
-            val duplicateExpense = repository.findRecentDuplicateExpenseAnySource(
-                parsed.amountMinor,
-                System.currentTimeMillis()
+        // ─────────────────────────────────────────────────────────────────
+        //  Critical Section: Multi-Source Deduplication & Record Insertion
+        // ─────────────────────────────────────────────────────────────────
+        dedupeMutex.withLock {
+            // 1. Transaction Reference Matching (UPI Ref / UTR / RRN / Bank Txn ID)
+            if (!parsed.transactionRef.isNullOrBlank()) {
+                val existingByRef = repository.findByTransactionRef(parsed.transactionRef)
+                if (existingByRef != null) {
+                    Log.d(TAG, "Exact transactionRef ${parsed.transactionRef} already in DB. Enriching and skipping duplicate.")
+                    // Enrich merchant if existing was empty
+                    if (existingByRef.merchant.isBlank() && parsed.merchant.isNotBlank()) {
+                        repository.updateExpenseMerchantAndRef(
+                            existingByRef.id,
+                            parsed.merchant,
+                            parsed.transactionRef
+                        )
+                    }
+                    // Upgrade source app if new is a dedicated UPI app (e.g. PhonePe) and existing was SMS/Email
+                    if (SupportedPackages.isUpi(pkg) && !SupportedPackages.isUpi(existingByRef.sourcePackage ?: "")) {
+                        repository.updateExpenseSourcePackage(existingByRef.id, pkg)
+                    }
+                    recordCandidate(pkg, notifKey, fullText, parsed, existingByRef.id, sbn.postTime)
+                    return@withLock
+                }
+            }
+
+            // 2. Cross-Source 5-Minute Time Window Matching (PhonePe + SMS + Email)
+            // If user paid ₹50 on PhonePe, PhonePe notification arrives, then Bank SMS arrives, then Email arrives.
+            val recentDuplicate = repository.findRecentDuplicateExpenseAnySource(
+                amountMinor = parsed.amountMinor,
+                transactionAt = System.currentTimeMillis(),
+                windowMs = 300_000L // 5-minute deduplication window
             )
-            if (duplicateExpense != null) {
-                Log.d(TAG, "Duplicate expense already recorded across apps, skipping")
-                if (duplicateExpense.merchant.isBlank() && parsed.merchant.isNotBlank()) {
+
+            if (recentDuplicate != null) {
+                Log.d(TAG, "Recent duplicate spend of ${parsed.amountMinor} detected within 5-min window across sources. Enriching.")
+                // If the new notification has a transactionRef (e.g. from SMS/Email) and existing didn't, enrich it!
+                if (recentDuplicate.transactionRef.isNullOrBlank() && !parsed.transactionRef.isNullOrBlank()) {
                     repository.updateExpenseMerchantAndRef(
-                        duplicateExpense.id,
+                        recentDuplicate.id,
+                        if (recentDuplicate.merchant.isBlank()) parsed.merchant else recentDuplicate.merchant,
+                        parsed.transactionRef
+                    )
+                } else if (recentDuplicate.merchant.isBlank() && parsed.merchant.isNotBlank()) {
+                    repository.updateExpenseMerchantAndRef(
+                        recentDuplicate.id,
                         parsed.merchant,
-                        parsed.transactionRef ?: duplicateExpense.transactionRef
+                        recentDuplicate.transactionRef
                     )
                 }
-                return
+                // Upgrade source package to UPI app if available
+                if (SupportedPackages.isUpi(pkg) && !SupportedPackages.isUpi(recentDuplicate.sourcePackage ?: "")) {
+                    repository.updateExpenseSourcePackage(recentDuplicate.id, pkg)
+                }
+                recordCandidate(pkg, notifKey, fullText, parsed, recentDuplicate.id, sbn.postTime)
+                return@withLock
             }
-            if (!parsed.transactionRef.isNullOrBlank() && repository.hasTransactionRef(parsed.transactionRef)) {
-                Log.d(TAG, "Duplicate txn ref ${parsed.transactionRef} already in DB, skipping")
-                return
+
+            // ─────────────────────────────────────────────────────────────
+            //  Separate Record Types: Shopping vs Debit Transfers vs Credited
+            // ─────────────────────────────────────────────────────────────
+            val isCredit = parsed.direction == TransactionDirection.CREDIT ||
+                    parsed.recordType == RecordType.INCOME ||
+                    parsed.recordType == RecordType.REFUND
+
+            val isSelf = !isCredit && (
+                    fullText.lowercase().contains("self") ||
+                    parsed.merchant.lowercase().contains("self") ||
+                    parsed.merchant.contains("Annem", ignoreCase = true) ||
+                    parsed.merchant.contains("Chaitanya", ignoreCase = true)
+            )
+
+            val isTransfer = !isCredit && (
+                    isSelf ||
+                    parsed.recordType == RecordType.TRANSFER ||
+                    CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
+                    CommonPatterns.isLikelyPersonPayee(parsed.merchant)
+            )
+
+            val finalRecordType = when {
+                isCredit -> if (parsed.recordType == RecordType.REFUND) RecordType.REFUND else RecordType.INCOME
+                isTransfer -> RecordType.TRANSFER
+                else -> RecordType.EXPENSE // Shopping / Merchant payment
             }
-        }
 
-        // Determine source display name
-        val sourceDisplayName = knownAppNames[pkg] ?: pkg.substringAfterLast('.')
+            val effectiveDirection = when {
+                isCredit -> TransactionDirection.CREDIT
+                else -> TransactionDirection.DEBIT
+            }
 
-        // Distinguish Transfer vs Paid (Merchant) vs Self Transfer vs Refund vs Received
-        val isSelf = fullText.lowercase().contains("self") ||
-                parsed.merchant.lowercase().contains("self") ||
-                parsed.merchant.contains("Annem", ignoreCase = true) ||
-                parsed.merchant.contains("Chaitanya", ignoreCase = true)
+            val label = when {
+                isSelf -> "Self Transfer"
+                finalRecordType == RecordType.TRANSFER -> "Transfer"
+                finalRecordType == RecordType.REFUND -> "Refund"
+                finalRecordType == RecordType.INCOME -> "Credited"
+                else -> "Paid" // Shopping / merchant spend
+            }
 
-        val isCredit = parsed.direction == TransactionDirection.CREDIT ||
-                parsed.recordType == RecordType.INCOME ||
-                parsed.recordType == RecordType.REFUND
+            // Auto-categorize
+            val suggestedCatId = repository.suggestCategoryId(parsed.merchant, finalRecordType)
+            val categoryName = repository.getCategoryName(suggestedCatId)
 
-        val isTransfer = !isCredit && (isSelf ||
-                parsed.recordType == RecordType.TRANSFER ||
-                CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
-                CommonPatterns.isLikelyPersonPayee(parsed.merchant))
+            val displayPayee = when {
+                parsed.merchant.isNotBlank() -> parsed.merchant
+                isSelf -> "Self Account"
+                isTransfer -> "Account Transfer"
+                finalRecordType == RecordType.INCOME -> "Received Money"
+                finalRecordType == RecordType.REFUND -> "Merchant Refund"
+                else -> sourceDisplayName
+            }
 
-        val finalRecordType = when {
-            isCredit -> parsed.recordType
-            isTransfer -> RecordType.TRANSFER
-            else -> parsed.recordType
-        }
-
-        val effectiveDirection = when {
-            isCredit -> TransactionDirection.CREDIT
-            isTransfer -> TransactionDirection.DEBIT
-            else -> parsed.direction
-        }
-
-        val label = when {
-            isSelf -> "Self Transfer"
-            finalRecordType == RecordType.TRANSFER -> "Transfer"
-            finalRecordType == RecordType.INCOME -> "Received"
-            finalRecordType == RecordType.REFUND -> "Refund"
-            else -> "Paid"
-        }
-
-        // Auto-categorize
-        val suggestedCatId = repository.suggestCategoryId(parsed.merchant, finalRecordType)
-        val categoryName = repository.getCategoryName(suggestedCatId)
-
-        val displayPayee = when {
-            parsed.merchant.isNotBlank() -> parsed.merchant
-            isSelf -> "Self Account"
-            isTransfer -> "Account Transfer"
-            finalRecordType == RecordType.INCOME -> "Received Money"
-            else -> sourceDisplayName
-        }
-
-        var createdExpenseId: Long? = null
-
-        // Automatically record confirmed debits and credits if amount is valid
-        if (parsed.amountMinor != null && parsed.amountMinor > 0L) {
             val note = when {
                 isSelf -> "Self Transfer to $displayPayee"
                 finalRecordType == RecordType.TRANSFER -> "Transfer to $displayPayee"
-                effectiveDirection == TransactionDirection.CREDIT -> "Received from $displayPayee"
+                finalRecordType == RecordType.REFUND -> "Refund from $displayPayee"
+                effectiveDirection == TransactionDirection.CREDIT -> "Credited from $displayPayee"
                 else -> "Paid to $displayPayee"
             }
 
@@ -214,33 +254,13 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 note = note,
                 confirmationStatus = ConfirmationStatus.CONFIRMED
             )
-            createdExpenseId = repository.saveExpense(expense)
-        }
 
-        // Build candidate entity
-        val candidate = TransactionCandidateEntity(
-            sourcePackage = pkg,
-            notificationKey = notifKey,
-            notificationText = sanitizeForStorage(text),
-            amountMinor = parsed.amountMinor,
-            currencyCode = parsed.currencyCode,
-            direction = effectiveDirection,
-            recordType = finalRecordType,
-            merchant = parsed.merchant,
-            transactionRef = parsed.transactionRef,
-            suggestedCategoryId = suggestedCatId,
-            confidence = parsed.confidence,
-            detectedAt = System.currentTimeMillis(),
-            notificationPostedAt = sbn.postTime,
-            expenseId = createdExpenseId
-        )
+            val createdExpenseId = repository.saveExpense(expense)
+            val candidateId = recordCandidate(pkg, notifKey, fullText, parsed, createdExpenseId, sbn.postTime)
 
-        val candidateId = repository.saveCandidate(candidate)
-
-        // Show rich status bar notification in the system drawer
-        if (createdExpenseId != null && parsed.amountMinor != null) {
+            // Post improved, high-visibility status bar notification
             ExpenseNotificationHelper.showAutoAddedExpenseNotification(
-                context = this,
+                context = this@SpendlyNotificationListener,
                 expenseId = createdExpenseId,
                 candidateId = candidateId,
                 amountMinor = parsed.amountMinor,
@@ -248,67 +268,80 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 label = label,
                 merchantOrRecipient = displayPayee,
                 categoryName = categoryName,
+                sourceDisplayName = sourceDisplayName,
+                transactionRef = parsed.transactionRef,
                 notificationId = createdExpenseId.toInt().coerceIn(1, Int.MAX_VALUE)
             )
-        } else {
-            ExpenseNotificationHelper.showExpenseDetectedNotification(
-                context = this,
-                candidateId = candidateId,
-                amountMinor = parsed.amountMinor,
-                merchant = displayPayee,
-                sourceDisplayName = sourceDisplayName,
-                notificationId = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
-            )
-        }
 
-        // Trigger OxygenOS Live Alerts & Dynamic Island capsule alert if app is open
-        if (parsed.amountMinor != null && parsed.amountMinor > 0) {
-            val catIcon = repository.getCategoryIcon(suggestedCatId)
-            com.spendly.app.core.livealert.LiveAlertManager.postAlert(
-                com.spendly.app.core.livealert.LiveAlertData(
-                    amountMinor = parsed.amountMinor,
-                    currencyCode = parsed.currencyCode,
-                    label = label,
-                    merchant = displayPayee,
-                    categoryName = categoryName,
-                    categoryIcon = catIcon,
-                    sourceApp = sourceDisplayName,
-                    transactionRef = parsed.transactionRef,
-                    expenseId = createdExpenseId
-                )
-            )
-        }
-
-        // Schedule cleanup of notification text after 10 minutes
-        scope.launch {
-            kotlinx.coroutines.delay(10 * 60 * 1000L)
-            repository.clearCandidateNotificationText(candidateId)
+            // Schedule candidate text cleanup after 10 minutes
+            scope.launch {
+                kotlinx.coroutines.delay(10 * 60 * 1000L)
+                repository.clearCandidateNotificationText(candidateId)
+            }
         }
     }
 
-    /** Minimal sanitization to remove potentially sensitive content */
-    private fun sanitizeForStorage(text: String): String {
-        return text.take(200)
+    private suspend fun recordCandidate(
+        pkg: String,
+        notifKey: String,
+        text: String,
+        parsed: ParsedTransaction,
+        expenseId: Long?,
+        postTime: Long
+    ): Long {
+        val candidate = TransactionCandidateEntity(
+            sourcePackage = pkg,
+            notificationKey = notifKey,
+            notificationText = text.take(200),
+            amountMinor = parsed.amountMinor,
+            currencyCode = parsed.currencyCode,
+            direction = parsed.direction,
+            recordType = parsed.recordType,
+            merchant = parsed.merchant,
+            transactionRef = parsed.transactionRef,
+            suggestedCategoryId = null,
+            confidence = parsed.confidence,
+            detectedAt = System.currentTimeMillis(),
+            notificationPostedAt = postTime,
+            expenseId = expenseId
+        )
+        return repository.saveCandidate(candidate)
     }
 
-    // Simple lookup for known app display names
     private val knownAppNames = mapOf(
         "com.phonepe.app" to "PhonePe",
         "com.google.android.apps.nbu.paisa.user" to "Google Pay",
         "net.one97.paytm" to "Paytm",
-        "in.org.npci.upiapp" to "BHIM",
+        "in.org.npci.upiapp" to "BHIM UPI",
         "com.dreamplug.androidapp" to "CRED",
         "in.amazon.mShop.android.shopping" to "Amazon Pay",
-        "com.amazon.mShop.android.shopping" to "Amazon Pay"
+        "com.amazon.mShop.android.shopping" to "Amazon Pay",
+        "com.mobikwik_new" to "MobiKwik",
+        "com.freecharge.android" to "Freecharge",
+        "com.navi.finance" to "Navi",
+        "money.super.app" to "super.money",
+        "com.tatadigital.tcp" to "Tata Neu",
+        "com.google.android.gm" to "Gmail",
+        "com.microsoft.office.outlook" to "Outlook",
+        "com.yahoo.mobile.client.android.mail" to "Yahoo Mail",
+        "com.google.android.apps.messaging" to "Messages",
+        "com.samsung.android.messaging" to "Samsung Messages",
+        "com.snapwork.hdfc" to "HDFC Bank",
+        "com.sbi.lotusintouch" to "SBI YONO",
+        "com.csam.icici.bank.imobile" to "ICICI Bank",
+        "com.axis.mobile" to "Axis Bank",
+        "com.msf.koko" to "Kotak Bank",
+        "com.pnb.pnbone" to "PNB ONE",
+        "com.bankofbaroda.mconnect" to "Bank of Baroda"
     )
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "NotificationListenerService started")
+        Log.i(TAG, "SpendlyNotificationListener started")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.i(TAG, "NotificationListenerService stopped")
+        Log.i(TAG, "SpendlyNotificationListener stopped")
     }
 }

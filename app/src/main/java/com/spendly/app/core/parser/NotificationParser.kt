@@ -35,6 +35,86 @@ interface NotificationParser {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Strict Whitelist of Supported Financial Sources
+// ─────────────────────────────────────────────────────────────────────
+
+object SupportedPackages {
+    // 1. SMS / Messaging Apps (Official Bank & UPI SMS)
+    val SMS_PACKAGES = setOf(
+        "com.google.android.apps.messaging",        // Google Messages
+        "com.samsung.android.messaging",            // Samsung Messages
+        "com.oneplus.mms",                          // OnePlus Messages
+        "com.coloros.mms",                          // Oppo Messages
+        "com.heytap.mms",                           // Realme / Oppo HeyTap
+        "com.oppo.mms",                             // Oppo Messages
+        "com.android.mms",                          // Standard AOSP / Xiaomi MIUI MMS
+        "com.miui.mms",                             // Xiaomi Messages
+        "com.vivo.mms"                              // Vivo / iQOO Messages
+    )
+
+    // 2. Email Apps (Bank & Payment confirmation emails)
+    val EMAIL_PACKAGES = setOf(
+        "com.google.android.gm",                    // Gmail
+        "com.microsoft.office.outlook",             // Microsoft Outlook
+        "com.yahoo.mobile.client.android.mail",     // Yahoo Mail
+        "com.samsung.android.email.provider",       // Samsung Email
+        "ch.protonmail.android",                    // Proton Mail
+        "org.kman.AquaMail",                        // Aqua Mail
+        "me.bluemail.mail"                          // Blue Mail
+    )
+
+    // 3. Official Bank Apps
+    val BANK_PACKAGES = setOf(
+        "com.snapwork.hdfc",                        // HDFC Bank
+        "com.sbi.lotusintouch",                     // SBI YONO
+        "com.spandana.yono",                        // SBI YONO Lite
+        "com.sbi.SBIFreedomPlus",                   // SBI Anywhere / Freedom
+        "com.csam.icici.bank.imobile",              // ICICI iMobile
+        "com.axis.mobile",                          // Axis Mobile
+        "com.msf.koko",                             // Kotak 811
+        "com.pnb.pnbone",                           // PNB ONE
+        "com.bankofbaroda.mconnect",                // bob World / BoB
+        "com.canarabank.mobility",                  // Canara ai1
+        "com.infrasofttech.uboi",                   // Union Bank of India
+        "com.unionbank.mobility",                   // Union Bank
+        "com.indusind.mpassbook",                   // IndusInd Bank
+        "com.fedmobile",                            // Federal Bank FedMobile
+        "com.idfcfirstbank.optimus",                // IDFC FIRST Bank
+        "money.jupiter",                            // Jupiter Money
+        "com.epifi.fincore",                        // Fi Money
+        "com.yesbank",                              // YES Bank
+        "com.rblbank.mobank",                       // RBL MoBank
+        "com.infrasoft.indianbank",                 // IndOASIS Indian Bank
+        "com.infrasoft.cboi",                       // Central Bank of India Cent Mobile
+        "com.aubank.mobilebanking"                  // AU 0101
+    )
+
+    // 4. UPI & Payment Apps
+    val UPI_PACKAGES = setOf(
+        "com.phonepe.app",                          // PhonePe
+        "com.google.android.apps.nbu.paisa.user",   // Google Pay
+        "net.one97.paytm",                          // Paytm
+        "in.org.npci.upiapp",                       // BHIM UPI
+        "com.dreamplug.androidapp",                 // CRED
+        "in.amazon.mShop.android.shopping",         // Amazon Pay India
+        "com.amazon.mShop.android.shopping",        // Amazon Pay Global
+        "com.mobikwik_new",                         // MobiKwik
+        "com.freecharge.android",                   // Freecharge
+        "com.navi.finance",                         // Navi
+        "money.super.app",                          // super.money
+        "com.tatadigital.tcp"                       // Tata Neu
+    )
+
+    val ALL_SUPPORTED: Set<String> = SMS_PACKAGES + EMAIL_PACKAGES + BANK_PACKAGES + UPI_PACKAGES
+
+    fun isSupported(packageName: String): Boolean = packageName in ALL_SUPPORTED
+    fun isEmail(packageName: String): Boolean = packageName in EMAIL_PACKAGES
+    fun isSms(packageName: String): Boolean = packageName in SMS_PACKAGES
+    fun isBank(packageName: String): Boolean = packageName in BANK_PACKAGES
+    fun isUpi(packageName: String): Boolean = packageName in UPI_PACKAGES
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Shared regex patterns
 // ─────────────────────────────────────────────────────────────────────
 
@@ -74,7 +154,20 @@ internal object CommonPatterns {
         "pending", "processing", "initiated", "in progress"
     )
 
+    // 12-digit UPI reference number patterns (UTR / RRN / UPI Ref)
+    val UPI_12_DIGIT_PATTERN = Regex(
+        """(?:UPI\s*(?:Ref\.?\s*(?:No\.?)?|Transaction\s*ID|Txn\s*ID)?\s*[:/ -]\s*|RRN\s*:?\s*|UTR\s*:?\s*)([0-9]{12})""",
+        RegexOption.IGNORE_CASE
+    )
+    val UPI_SLASH_PATTERN = Regex(
+        """UPI/[0-9]{10,16}/([A-Za-z0-9][A-Za-z0-9 &.'-]{1,35}?)""",
+        RegexOption.IGNORE_CASE
+    )
     val UPI_REF_PATTERN = Regex("""(?:UPI\s*Ref\.?\s*(?:No\.?)?\s*:?\s*)([0-9]{10,20})""", RegexOption.IGNORE_CASE)
+    val GENERIC_REF_PATTERN = Regex(
+        """(?:Ref\s*(?:No\.?|#)?\s*:?\s*|Txn\s*(?:ID|Ref|#)\.?\s*:?\s*|IMPS\s*/|NEFT\s*/)([A-Za-z0-9]{6,25})""",
+        RegexOption.IGNORE_CASE
+    )
     val TXN_REF_PATTERN = Regex("""(?:Txn\s*(?:ID|Ref)\.?\s*:?\s*)([A-Z0-9]{6,20})""", RegexOption.IGNORE_CASE)
 
     // Non-expense exclusion keywords (OTP, balance inquiries, promotional, spam)
@@ -181,7 +274,7 @@ internal object CommonPatterns {
 
         if (hasDebit && hasCredit) {
             // E.g. "Your A/c XX2636 debited by Rs 1.00 ... amount credited to recipient" -> user account was DEBITED
-            if (sanitized.contains("debited") && (sanitized.contains("to a/c") || sanitized.contains("to vpa") || sanitized.contains("transferred to"))) {
+            if (sanitized.contains("debited") && (sanitized.contains("to a/c") || sanitized.contains("to vpa") || sanitized.contains("transferred to") || sanitized.contains("transfer to"))) {
                 return TransactionDirection.DEBIT
             }
             val debitIndex = DEBIT_KEYWORDS.map { sanitized.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: Int.MAX_VALUE
@@ -309,6 +402,13 @@ internal object CommonPatterns {
     }
 
     fun extractMerchant(text: String): String {
+        // Try UPI slash pattern: UPI/<ref>/<merchant> (e.g. UPI/429612345678/Sri Sai Store)
+        val slashMatch = UPI_SLASH_PATTERN.find(text)?.groupValues?.get(1)?.trim()
+        if (!slashMatch.isNullOrBlank()) {
+            val cleaned = sanitizeMerchantName(slashMatch)
+            if (cleaned.isNotBlank()) return cleaned
+        }
+
         // Try VPA first (e.g. rahul@oksbi)
         val vpaMatch = VPA_PATTERN.find(text)?.groupValues?.get(1)?.trim()
         if (!vpaMatch.isNullOrBlank()) {
@@ -348,8 +448,13 @@ internal object CommonPatterns {
     }
 
     fun extractRef(text: String): String? {
-        return UPI_REF_PATTERN.find(text)?.groupValues?.get(1)
-            ?: TXN_REF_PATTERN.find(text)?.groupValues?.get(1)
+        val upi12 = UPI_12_DIGIT_PATTERN.find(text)?.groupValues?.get(1)
+        if (!upi12.isNullOrBlank()) return upi12
+        val upiRef = UPI_REF_PATTERN.find(text)?.groupValues?.get(1)
+        if (!upiRef.isNullOrBlank()) return upiRef
+        val generic = GENERIC_REF_PATTERN.find(text)?.groupValues?.get(1)
+        if (!generic.isNullOrBlank()) return generic
+        return TXN_REF_PATTERN.find(text)?.groupValues?.get(1)
     }
 
     fun calculateConfidence(

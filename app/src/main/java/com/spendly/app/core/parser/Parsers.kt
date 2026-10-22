@@ -222,28 +222,24 @@ class AmazonPayParser : NotificationParser {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Generic Bank / UPI Parser (fallback)
+//  Other UPI Apps Parser (MobiKwik, Freecharge, Navi, Super.money, Tata Neu)
 // ─────────────────────────────────────────────────────────────────────
 
-class GenericBankParser : NotificationParser {
-    override val name = "Generic"
-    override val supportedPackages = emptySet<String>() // fallback for all
+class OtherUpiParser : NotificationParser {
+    override val name = "UPI App"
+    override val supportedPackages = SupportedPackages.UPI_PACKAGES
 
     override fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
         if (CommonPatterns.isNonExpenseMessage(fullText)) return null
 
-        // Must have an amount to even consider this
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
-
         val direction = CommonPatterns.detectDirection(fullText)
+        if (direction == TransactionDirection.UNKNOWN) return null
+
         val rawMerchant = CommonPatterns.extractMerchant(fullText)
         val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
         val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
-
-        // Generic parser requires a direction clue to avoid false positives
-        if (direction == TransactionDirection.UNKNOWN) return null
-
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
@@ -252,14 +248,122 @@ class GenericBankParser : NotificationParser {
             recordTypeKnown = recordType != RecordType.UNKNOWN,
             hasMerchant = merchant.isNotEmpty(),
             hasRef = ref != null
-        ) * 0.8f // Reduce confidence for generic parser
+        )
 
-        return ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
+        return if (confidence > 0.3f) {
+            ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
+        } else null
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Parser Registry
+//  Email Parser (Gmail, Outlook, Yahoo Mail, Samsung Email receiving Bank alerts)
+// ─────────────────────────────────────────────────────────────────────
+
+class EmailParser : NotificationParser {
+    override val name = "Bank Email"
+    override val supportedPackages = SupportedPackages.EMAIL_PACKAGES
+
+    override fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
+        val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
+        if (CommonPatterns.isNonExpenseMessage(fullText)) return null
+
+        val amount = CommonPatterns.extractAmount(fullText) ?: return null
+        val direction = CommonPatterns.detectDirection(fullText)
+        // Email must strictly have verified debit or credit
+        if (direction == TransactionDirection.UNKNOWN) return null
+
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
+        val ref = CommonPatterns.extractRef(fullText)
+
+        val confidence = CommonPatterns.calculateConfidence(
+            hasAmount = true,
+            directionKnown = true,
+            recordTypeKnown = recordType != RecordType.UNKNOWN,
+            hasMerchant = merchant.isNotEmpty(),
+            hasRef = ref != null
+        )
+
+        return if (confidence > 0.3f) {
+            ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
+        } else null
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Official Bank App Parser (HDFC, SBI YONO, ICICI iMobile, Axis, Kotak, etc.)
+// ─────────────────────────────────────────────────────────────────────
+
+class BankAppParser : NotificationParser {
+    override val name = "Bank App"
+    override val supportedPackages = SupportedPackages.BANK_PACKAGES
+
+    override fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
+        val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
+        if (CommonPatterns.isNonExpenseMessage(fullText)) return null
+
+        val amount = CommonPatterns.extractAmount(fullText) ?: return null
+        val direction = CommonPatterns.detectDirection(fullText)
+        if (direction == TransactionDirection.UNKNOWN) return null
+
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
+        val ref = CommonPatterns.extractRef(fullText)
+
+        val confidence = CommonPatterns.calculateConfidence(
+            hasAmount = true,
+            directionKnown = true,
+            recordTypeKnown = recordType != RecordType.UNKNOWN,
+            hasMerchant = merchant.isNotEmpty(),
+            hasRef = ref != null
+        )
+
+        return if (confidence > 0.3f) {
+            ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
+        } else null
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  SMS / Messages Parser (Google Messages, Samsung Messages, OnePlus MMS, etc.)
+// ─────────────────────────────────────────────────────────────────────
+
+class SmsParser : NotificationParser {
+    override val name = "Bank SMS"
+    override val supportedPackages = SupportedPackages.SMS_PACKAGES
+
+    override fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
+        val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
+        if (CommonPatterns.isNonExpenseMessage(fullText)) return null
+
+        val amount = CommonPatterns.extractAmount(fullText) ?: return null
+        val direction = CommonPatterns.detectDirection(fullText)
+        if (direction == TransactionDirection.UNKNOWN) return null
+
+        val rawMerchant = CommonPatterns.extractMerchant(fullText)
+        val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
+        val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
+        val ref = CommonPatterns.extractRef(fullText)
+
+        val confidence = CommonPatterns.calculateConfidence(
+            hasAmount = true,
+            directionKnown = true,
+            recordTypeKnown = recordType != RecordType.UNKNOWN,
+            hasMerchant = merchant.isNotEmpty(),
+            hasRef = ref != null
+        )
+
+        return if (confidence > 0.3f) {
+            ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
+        } else null
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Parser Registry (Strict Whitelist + Multi-Source Architecture)
 // ─────────────────────────────────────────────────────────────────────
 
 class NotificationParserRegistry {
@@ -271,25 +375,65 @@ class NotificationParserRegistry {
         CredParser(),
         AmazonPayParser()
     )
-    private val fallbackParser = GenericBankParser()
 
+    private val otherUpiParser = OtherUpiParser()
+    private val emailParser = EmailParser()
+    private val bankAppParser = BankAppParser()
+    private val smsParser = SmsParser()
+
+    /**
+     * Parse notification text strictly from authorized financial sources.
+     * Returns null immediately if source is not in the verified whitelist.
+     */
     fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
-        // Try source-specific parser first
+        // STRICT WHITELIST: Only process emails, messages, official bank apps, and UPI apps
+        if (!SupportedPackages.isSupported(sourcePackage)) {
+            return null
+        }
+
+        // 1. Try dedicated UPI app parsers (PhonePe, GPay, Paytm, BHIM, CRED, Amazon Pay)
         val specific = specificParsers.firstOrNull { sourcePackage in it.supportedPackages }
         if (specific != null) {
             val result = specific.parse(sourcePackage, title, text, bigText)
-            if (result != null) return result
+            if (result != null && isValidFinancialTransaction(result)) return result
         }
-        // Fallback to generic parser
-        return fallbackParser.parse(sourcePackage, title, text, bigText)
+
+        // 2. Try appropriate category parser based on package type
+        val candidate = when {
+            SupportedPackages.isEmail(sourcePackage) -> emailParser.parse(sourcePackage, title, text, bigText)
+            SupportedPackages.isSms(sourcePackage) -> smsParser.parse(sourcePackage, title, text, bigText)
+            SupportedPackages.isBank(sourcePackage) -> bankAppParser.parse(sourcePackage, title, text, bigText)
+            SupportedPackages.isUpi(sourcePackage) -> otherUpiParser.parse(sourcePackage, title, text, bigText)
+            else -> null
+        }
+
+        if (candidate != null && isValidFinancialTransaction(candidate)) {
+            return candidate
+        }
+
+        return null
+    }
+
+    /**
+     * Strictly verify that this is a valid debit or credit transaction with known direction and amount.
+     */
+    private fun isValidFinancialTransaction(tx: ParsedTransaction): Boolean {
+        if (tx.amountMinor == null || tx.amountMinor <= 0L) return false
+        if (tx.direction == TransactionDirection.UNKNOWN) return false
+        if (tx.recordType == RecordType.UNKNOWN) return false
+        return true
     }
 
     /** Get all parsers that support a given package for debug info */
     fun parsersForPackage(sourcePackage: String): List<String> {
         val names = mutableListOf<String>()
-        specificParsers.filter { sourcePackage in it.supportedPackages }
-            .forEach { names.add(it.name) }
-        names.add(fallbackParser.name + " (fallback)")
+        specificParsers.filter { sourcePackage in it.supportedPackages }.forEach { names.add(it.name) }
+        when {
+            SupportedPackages.isEmail(sourcePackage) -> names.add(emailParser.name)
+            SupportedPackages.isSms(sourcePackage) -> names.add(smsParser.name)
+            SupportedPackages.isBank(sourcePackage) -> names.add(bankAppParser.name)
+            SupportedPackages.isUpi(sourcePackage) -> names.add(otherUpiParser.name)
+        }
         return names
     }
 }
