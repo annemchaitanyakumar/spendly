@@ -34,21 +34,22 @@ interface TransactionCandidateDao {
     @Query("UPDATE transaction_candidates SET expense_id = :expenseId WHERE id = :id")
     suspend fun markConfirmed(id: Long, expenseId: Long)
 
+    @Query("SELECT * FROM transaction_candidates WHERE notification_key = :notifKey LIMIT 1")
+    suspend fun findByNotificationKey(notifKey: String): TransactionCandidateEntity?
+
     // Deduplication check: same source, similar amount, within time window
     @Query("""
         SELECT * FROM transaction_candidates
         WHERE source_package = :sourcePackage
           AND amount_minor = :amountMinor
           AND ABS(detected_at - :detectedAt) < :windowMs
-          AND is_dismissed = 0
-          AND expense_id IS NULL
         LIMIT 1
     """)
     suspend fun findDuplicate(
         sourcePackage: String,
         amountMinor: Long?,
         detectedAt: Long,
-        windowMs: Long = 60_000L
+        windowMs: Long = 300_000L
     ): TransactionCandidateEntity?
 
     @Query("DELETE FROM transaction_candidates WHERE detected_at < :cutoffMillis")

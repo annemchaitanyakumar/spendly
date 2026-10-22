@@ -88,7 +88,20 @@ class AddExpenseViewModel(
                     recordType = RecordType.EXPENSE,
                     confirmationStatus = ConfirmationStatus.CONFIRMED
                 )
-                repository.saveExpense(expense)
+                val id = repository.saveExpense(expense)
+                val cat = s.categoryId?.let { repository.getCategoryById(it) }
+                com.spendly.app.core.livealert.LiveAlertManager.postAlert(
+                    com.spendly.app.core.livealert.LiveAlertData(
+                        amountMinor = amountMinor,
+                        currencyCode = "INR",
+                        label = "Paid",
+                        merchant = s.merchant.trim().ifBlank { "Expense" },
+                        categoryName = cat?.name ?: "Expenses",
+                        categoryIcon = cat?.icon,
+                        sourceApp = "Manual Entry",
+                        expenseId = id
+                    )
+                )
                 _state.update { it.copy(isSaving = false, savedSuccessfully = true) }
                 onSuccess()
             } catch (e: Exception) {

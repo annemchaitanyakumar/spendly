@@ -179,7 +179,12 @@ private fun CategoryChip(category: Category, selected: Boolean, onClick: () -> U
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(category.name, style = MaterialTheme.typography.labelMedium) },
+        label = { 
+            Text(
+                "${com.spendly.app.ui.components.categoryIconEmoji(category.icon)} ${category.name}", 
+                style = MaterialTheme.typography.labelMedium
+            ) 
+        },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = catColor.copy(alpha = 0.15f),
             selectedLabelColor = catColor

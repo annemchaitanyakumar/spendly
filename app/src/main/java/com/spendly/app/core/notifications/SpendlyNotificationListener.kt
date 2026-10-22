@@ -33,9 +33,21 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Cooldown map: prevent re-prompting the same notification key within a window
-    private val recentlyProcessed = mutableMapOf<String, Long>()
-    private val COOLDOWN_MS = 30_000L  // 30 seconds
+    // Thread-safe Cooldown map: prevent re-prompting the same notification key or fingerprint within a 5-minute window
+    private val recentlyProcessed = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val COOLDOWN_MS = 300_000L  // 5 minutes
+
+    private fun isRecentlyProcessed(key: String): Boolean {
+        val now = System.currentTimeMillis()
+        val last = recentlyProcessed[key] ?: 0L
+        if (now - last < COOLDOWN_MS) return true
+        recentlyProcessed[key] = now
+        if (recentlyProcessed.size > 200) {
+            val cutoff = now - COOLDOWN_MS
+            recentlyProcessed.entries.removeIf { it.value < cutoff }
+        }
+        return false
+    }
 
     companion object {
         private const val TAG = "SpendlyNotifListener"
@@ -45,6 +57,9 @@ class SpendlyNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
         val pkg = sbn.packageName ?: return
+
+        // Skip our own notifications to avoid any recursion
+        if (pkg == packageName || pkg == "com.spendly.app" || pkg == "com.spendly.app.debug") return
 
         scope.launch {
             try {
@@ -70,15 +85,10 @@ class SpendlyNotificationListener : NotificationListenerService() {
 
         // Cooldown: skip if same notification key was recently processed
         val notifKey = sbn.key ?: "${pkg}_${sbn.id}"
-        val lastProcessed = recentlyProcessed[notifKey] ?: 0L
-        if (System.currentTimeMillis() - lastProcessed < COOLDOWN_MS) return
-        recentlyProcessed[notifKey] = System.currentTimeMillis()
+        if (isRecentlyProcessed(notifKey)) return
 
-        // Cleanup stale cooldown entries
-        if (recentlyProcessed.size > 200) {
-            val cutoff = System.currentTimeMillis() - COOLDOWN_MS * 5
-            recentlyProcessed.entries.removeIf { it.value < cutoff }
-        }
+        // Check if this notification key was already stored in DB
+        if (repository.findCandidateByNotifKey(notifKey) != null) return
 
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
 
@@ -88,7 +98,14 @@ class SpendlyNotificationListener : NotificationListenerService() {
         // Require minimum confidence
         if (parsed.confidence < CONFIDENCE_THRESHOLD) return
 
-        // Deduplication: check if we already have a similar candidate
+        // Fingerprint deduplication: package + amount + merchant
+        val contentFingerprint = "${pkg}_${parsed.amountMinor}_${parsed.merchant.lowercase().trim()}"
+        if (isRecentlyProcessed(contentFingerprint)) {
+            Log.d(TAG, "Duplicate fingerprint $contentFingerprint detected, skipping")
+            return
+        }
+
+        // Deduplication: check if we already have a similar candidate in DB within 5 minutes
         val existing = repository.findDuplicateCandidate(
             pkg, parsed.amountMinor, System.currentTimeMillis()
         )
@@ -97,18 +114,39 @@ class SpendlyNotificationListener : NotificationListenerService() {
             return
         }
 
+        // Deduplication in Expenses table: check if an identical expense was already created
+        if (parsed.amountMinor != null && parsed.amountMinor > 0L) {
+            if (repository.hasDuplicateExpense(parsed.amountMinor, pkg, sbn.postTime)) {
+                Log.d(TAG, "Duplicate expense already recorded for $pkg, skipping")
+                return
+            }
+            if (!parsed.transactionRef.isNullOrBlank() && repository.hasTransactionRef(parsed.transactionRef)) {
+                Log.d(TAG, "Duplicate txn ref ${parsed.transactionRef} already in DB, skipping")
+                return
+            }
+        }
+
         // Determine source display name
         val sourceDisplayName = knownAppNames[pkg] ?: pkg.substringAfterLast('.')
 
-        // Distinguish Transfer vs Paid (Merchant) vs Refund vs Received
-        val isTransfer = parsed.recordType == RecordType.TRANSFER ||
-                CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) }
+        // Distinguish Transfer vs Paid (Merchant) vs Self Transfer vs Refund vs Received
+        val isSelf = fullText.lowercase().contains("self") ||
+                parsed.merchant.lowercase().contains("self") ||
+                parsed.merchant.contains("Annem", ignoreCase = true) ||
+                parsed.merchant.contains("Chaitanya", ignoreCase = true)
+
+        val isTransfer = isSelf ||
+                parsed.recordType == RecordType.TRANSFER ||
+                CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
+                CommonPatterns.isLikelyPersonPayee(parsed.merchant)
+
         val finalRecordType = if (isTransfer) RecordType.TRANSFER else parsed.recordType
 
-        val label = when (finalRecordType) {
-            RecordType.TRANSFER -> "Transfer"
-            RecordType.INCOME -> "Received"
-            RecordType.REFUND -> "Refund"
+        val label = when {
+            isSelf -> "Self Transfer"
+            finalRecordType == RecordType.TRANSFER -> "Transfer"
+            finalRecordType == RecordType.INCOME -> "Received"
+            finalRecordType == RecordType.REFUND -> "Refund"
             else -> "Paid"
         }
 
@@ -121,10 +159,10 @@ class SpendlyNotificationListener : NotificationListenerService() {
         // Automatically record confirmed expenses/transfers if amount is valid
         if (parsed.amountMinor != null && parsed.amountMinor > 0L && parsed.direction == TransactionDirection.DEBIT) {
             val merchantOrRecipient = parsed.merchant.ifBlank { sourceDisplayName }
-            val note = if (finalRecordType == RecordType.TRANSFER) {
-                "Transfer to $merchantOrRecipient"
-            } else {
-                "Paid to $merchantOrRecipient"
+            val note = when {
+                isSelf -> "Self Transfer to $merchantOrRecipient"
+                finalRecordType == RecordType.TRANSFER -> "Transfer to $merchantOrRecipient"
+                else -> "Paid to $merchantOrRecipient"
             }
 
             val expense = Expense(
@@ -185,6 +223,24 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 merchant = parsed.merchant.takeIf { it.isNotBlank() },
                 sourceDisplayName = sourceDisplayName,
                 notificationId = candidateId.toInt().coerceIn(1, Int.MAX_VALUE)
+            )
+        }
+
+        // Trigger OxygenOS Live Alerts & Dynamic Island capsule alert if app is open
+        if (parsed.amountMinor != null && parsed.amountMinor > 0) {
+            val catIcon = repository.getCategoryIcon(suggestedCatId)
+            com.spendly.app.core.livealert.LiveAlertManager.postAlert(
+                com.spendly.app.core.livealert.LiveAlertData(
+                    amountMinor = parsed.amountMinor,
+                    currencyCode = parsed.currencyCode,
+                    label = label,
+                    merchant = parsed.merchant.ifBlank { sourceDisplayName },
+                    categoryName = categoryName,
+                    categoryIcon = catIcon,
+                    sourceApp = sourceDisplayName,
+                    transactionRef = parsed.transactionRef,
+                    expenseId = createdExpenseId
+                )
             )
         }
 

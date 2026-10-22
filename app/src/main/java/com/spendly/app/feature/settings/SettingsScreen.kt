@@ -115,13 +115,39 @@ fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Header ────────────────────────────────────────────────────
+        // ── Header with App Icon ──────────────────────────────────────
         item(key = "header") {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF0B140E),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = com.spendly.app.R.drawable.ic_app_icon),
+                        contentDescription = "Spendly Icon",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Column {
+                    Text(
+                        "Spendly",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Settings & Preferences",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
 
         // ── Notification Detection Card ───────────────────────────────
@@ -452,13 +478,27 @@ fun SettingsScreen(
                                     else MaterialTheme.colorScheme.surfaceContainerHighest,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text(
                                             "Parser: ${res.parserName} · Direction: ${res.direction}",
                                             fontWeight = FontWeight.Bold,
                                             style = MaterialTheme.typography.labelLarge
                                         )
                                         Text(res.summary, style = MaterialTheme.typography.bodySmall)
+
+                                        Button(
+                                            onClick = { viewModel.triggerSimulatedLiveAlert(res) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFF00E676),
+                                                contentColor = Color.Black
+                                            ),
+                                            shape = MaterialTheme.shapes.medium,
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Bolt, null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Preview OxygenOS Live Alert", fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }

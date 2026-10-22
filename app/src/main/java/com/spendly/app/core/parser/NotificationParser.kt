@@ -144,20 +144,48 @@ internal object CommonPatterns {
         }
     }
 
-    // Transfer keywords
+    // Transfer & self-transfer keywords
     val TRANSFER_KEYWORDS = listOf(
-        "transferred to", "transfer to", "sent to", "sent money",
-        "to a/c", "to account", "transfer of", "fund transfer",
-        "p2p", "upi transfer", "imps", "neft"
+        "self", "to self", "self transfer", "own account", "own a/c",
+        "between accounts", "to your account", "to your own",
+        "transferred to", "transfer to", "transferred", "transfer of",
+        "sent to", "sent money", "send money to", "send money",
+        "to a/c", "to account", "fund transfer", "funds transfer",
+        "p2p", "upi transfer", "imps", "neft", "rtgs"
     )
 
-    fun detectRecordType(text: String, direction: TransactionDirection): RecordType {
+    fun isLikelyPersonPayee(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return false
+        val lower = trimmed.lowercase()
+        if (lower.contains("self") || lower.contains("account") || lower.contains("a/c")) return true
+
+        // Business terms indicate commercial merchants
+        val businessKeywords = listOf(
+            "store", "shop", "mart", "cafe", "restaurant", "bakery", "pharmacy",
+            "ltd", "pvt", "limited", "enterprises", "solutions", "services",
+            "bazaar", "hotel", "clinic", "hospital", "petrol", "fuel", "bunk",
+            "retail", "digital", "foods", "tech", "com", "agency", "station",
+            "stationery", "mall", "supermarket", "cinema", "theatre", "travels"
+        )
+        if (businessKeywords.any { lower.contains(it) }) return false
+
+        // 2 to 4 name parts (e.g. Annem Chaitanya Kumar, Rahul Sharma)
+        val words = trimmed.split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (words.size in 2..4 && words.all { w -> w.all { it.isLetter() || it == '.' } }) {
+            return true
+        }
+        return false
+    }
+
+    fun detectRecordType(text: String, direction: TransactionDirection, merchant: String = ""): RecordType {
         val lower = text.lowercase()
         return when {
             FAILURE_KEYWORDS.any { it in lower } -> RecordType.FAILED
             REFUND_KEYWORDS.any { it in lower } && direction == TransactionDirection.CREDIT -> RecordType.REFUND
             PENDING_KEYWORDS.any { it in lower } -> RecordType.PENDING
             TRANSFER_KEYWORDS.any { it in lower } -> RecordType.TRANSFER
+            isLikelyPersonPayee(merchant) -> RecordType.TRANSFER
             direction == TransactionDirection.DEBIT -> RecordType.EXPENSE
             direction == TransactionDirection.CREDIT -> RecordType.INCOME
             else -> RecordType.UNKNOWN

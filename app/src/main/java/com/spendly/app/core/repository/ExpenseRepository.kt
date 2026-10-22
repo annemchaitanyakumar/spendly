@@ -25,10 +25,9 @@ class ExpenseRepository(
         .map { list -> list.map { it.toDomain() } }
 
     suspend fun ensureCategoriesSeeded() = withContext(Dispatchers.IO) {
-        if (categoryDao.count() == 0) {
-            categoryDao.insertAll(DatabaseSeedData.defaultCategories)
-            appSourceDao.insertAll(DatabaseSeedData.knownPaymentApps)
-        }
+        categoryDao.insertAll(DatabaseSeedData.defaultCategories)
+        appSourceDao.insertAll(DatabaseSeedData.knownPaymentApps)
+        deduplicateRecentExpenses()
     }
 
     suspend fun getCategoryById(id: Long): Category? = withContext(Dispatchers.IO) {
@@ -249,20 +248,62 @@ class ExpenseRepository(
         candidateDao.deleteOlderThan(cutoff)
     }
 
+    suspend fun hasTransactionRef(ref: String): Boolean = withContext(Dispatchers.IO) {
+        expenseDao.countByTransactionRef(ref) > 0
+    }
+
+    suspend fun findCandidateByNotifKey(notifKey: String): com.spendly.app.core.database.entity.TransactionCandidateEntity? =
+        withContext(Dispatchers.IO) {
+            candidateDao.findByNotificationKey(notifKey)
+        }
+
+    suspend fun deduplicateRecentExpenses() = withContext(Dispatchers.IO) {
+        val all = expenseDao.getAll()
+        val toDelete = mutableListOf<Long>()
+        val seen = mutableSetOf<String>()
+
+        for (e in all) {
+            val timeBucket = e.transactionAt / 120_000L
+            val key = "${e.amountMinor}_${e.sourcePackage}_${e.merchant}_$timeBucket"
+            if (!seen.add(key)) {
+                toDelete.add(e.id)
+            }
+        }
+
+        for (id in toDelete) {
+            expenseDao.deleteById(id)
+        }
+    }
+
     suspend fun suggestCategoryId(merchant: String, recordType: RecordType): Long = withContext(Dispatchers.IO) {
-        if (recordType == RecordType.TRANSFER) return@withContext 13L // Transfers category
-        val lower = merchant.lowercase()
-        for ((keyword, catId) in DatabaseSeedData.merchantCategoryHints) {
-            if (lower.contains(keyword)) return@withContext catId
+        if (recordType == RecordType.TRANSFER) return@withContext 13L // Transfers & UPI category
+        val lower = merchant.lowercase().trim()
+        if (lower.isNotBlank()) {
+            if (lower.contains("self") ||
+                lower.contains("account") ||
+                lower.contains("a/c") ||
+                lower.contains("chaitanya") ||
+                lower.contains("annem") ||
+                com.spendly.app.core.parser.CommonPatterns.isLikelyPersonPayee(merchant)
+            ) {
+                return@withContext 13L // Transfers & UPI
+            }
+            for ((keyword, catId) in DatabaseSeedData.merchantCategoryHints) {
+                if (lower.contains(keyword)) return@withContext catId
+            }
+            val existing = merchantDao.findByName(merchant)
+            if (existing?.suggestedCategoryId != null) {
+                return@withContext existing.suggestedCategoryId
+            }
         }
-        val existing = merchantDao.findByName(merchant)
-        if (existing?.suggestedCategoryId != null) {
-            return@withContext existing.suggestedCategoryId
-        }
-        1L // Default to Food & Dining / or 14L Other
+        20L // Default to Other (NEVER Food & Dining)
     }
 
     suspend fun getCategoryName(categoryId: Long): String = withContext(Dispatchers.IO) {
         categoryDao.getById(categoryId)?.name ?: "Expenses"
+    }
+
+    suspend fun getCategoryIcon(categoryId: Long): String? = withContext(Dispatchers.IO) {
+        categoryDao.getById(categoryId)?.icon
     }
 }

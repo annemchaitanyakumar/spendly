@@ -32,6 +32,7 @@ import com.spendly.app.feature.transactions.TransactionsScreen
 import com.spendly.app.theme.SpendlyTheme
 import com.spendly.app.ui.MainViewModel
 import com.spendly.app.ui.spendlyViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -39,12 +40,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Explicitly request notification posting permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
-            }
-        }
+        // Clear any old stacked notifications when opening the app
+        try {
+            val notificationManager = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.cancelAll()
+        } catch (_: Exception) {}
 
         setContent {
             val mainVm: MainViewModel = spendlyViewModel()
@@ -84,11 +84,12 @@ val bottomNavItems = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpendlyApp() {
+fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
     var currentDest by remember { mutableStateOf<NavDest>(NavDest.Home) }
     var showAddExpense by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Backup permission request launcher for Android 13+
     val notifPermissionLauncher = rememberLauncherForActivityResult(
@@ -111,7 +112,7 @@ fun SpendlyApp() {
             )
         },
         floatingActionButton = {},
-        contentWindowInsets = WindowInsets.navigationBars
+        contentWindowInsets = WindowInsets.safeDrawing
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedContent(
@@ -142,6 +143,20 @@ fun SpendlyApp() {
                     )
                 }
             }
+
+            // OxygenOS Live Alerts & Apple Dynamic Island floating capsule alert
+            com.spendly.app.ui.components.DynamicIslandAlert(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp),
+                onUndoExpense = { expenseId ->
+                    mainVm.undoExpense(expenseId)
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Transaction undone")
+                    }
+                }
+            )
         }
     }
 

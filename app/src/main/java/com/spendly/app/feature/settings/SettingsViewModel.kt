@@ -166,4 +166,20 @@ class SettingsViewModel(
             }
         }
     }
+
+    fun triggerSimulatedLiveAlert(result: ParserDebugResult) {
+        val amount = result.amountMinor ?: 45000L
+        val merchant = result.merchant.ifBlank { "Starbucks" }
+        com.spendly.app.core.livealert.LiveAlertManager.postAlert(
+            com.spendly.app.core.livealert.LiveAlertData(
+                amountMinor = amount,
+                currencyCode = result.currencyCode,
+                label = if (result.recordType == "TRANSFER") "Transfer" else "Paid",
+                merchant = merchant,
+                categoryName = if (result.recordType == "TRANSFER") "Transfers & UPI" else "Food & Dining",
+                categoryIcon = if (result.recordType == "TRANSFER") "swap_horiz" else "restaurant",
+                sourceApp = result.parserName.ifBlank { "Live Detection" }
+            )
+        )
+    }
 }

@@ -158,13 +158,21 @@ interface ExpenseDao {
         SELECT COUNT(*) FROM expenses
         WHERE amount_minor = :amountMinor
           AND source_package = :sourcePackage
-          AND ABS(transaction_at - :transactionAt) < 60000
+          AND ABS(transaction_at - :transactionAt) < 180000
     """)
     suspend fun countPotentialDuplicates(
         amountMinor: Long,
         sourcePackage: String?,
         transactionAt: Long
     ): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM expenses
+        WHERE transaction_ref = :ref
+          AND transaction_ref IS NOT NULL
+          AND transaction_ref != ''
+    """)
+    suspend fun countByTransactionRef(ref: String): Int
 
     // ── Update confirmation status ───────────────────────────────────
     @Query("UPDATE expenses SET confirmation_status = :status, updated_at = :now WHERE id = :id")

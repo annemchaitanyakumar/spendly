@@ -20,7 +20,7 @@ class SpendlyViewModelFactory(
         val container = app.container
         return when {
             modelClass.isAssignableFrom(MainViewModel::class.java) ->
-                MainViewModel(container.settingsRepository) as T
+                MainViewModel(container.settingsRepository, container.expenseRepository) as T
             modelClass.isAssignableFrom(HomeViewModel::class.java) ->
                 HomeViewModel(container.expenseRepository) as T
             modelClass.isAssignableFrom(TransactionsViewModel::class.java) ->

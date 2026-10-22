@@ -179,10 +179,10 @@ fun ExpenseListItem(
 }
 
 fun categoryIconEmoji(icon: String?): String = when (icon) {
-    "restaurant" -> "🍽"
+    "restaurant" -> "🍽️"
     "shopping_cart" -> "🛒"
     "directions_car" -> "🚗"
-    "shopping_bag" -> "👜"
+    "shopping_bag" -> "🛍️"
     "receipt_long" -> "🧾"
     "movie" -> "🎬"
     "local_hospital" -> "🏥"
@@ -192,6 +192,12 @@ fun categoryIconEmoji(icon: String?): String = when (icon) {
     "home" -> "🏠"
     "subscriptions" -> "📱"
     "swap_horiz" -> "↔️"
-    "category" -> "•"
+    "trending_up" -> "📈"
+    "face" -> "💇"
+    "card_giftcard" -> "🎁"
+    "family_restroom" -> "👨‍👩‍👦"
+    "pets" -> "🐾"
+    "build" -> "🔧"
+    "category" -> "📦"
     else -> "💳"
 }
