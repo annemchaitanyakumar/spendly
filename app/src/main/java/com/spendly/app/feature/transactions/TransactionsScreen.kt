@@ -106,13 +106,39 @@ fun TransactionsScreen(
             shape = MaterialTheme.shapes.extraLarge
         )
 
-        // ── Month filter chips ────────────────────────────────────────
-        AnimatedVisibility(visible = showFilters) {
-            FilterRow(
-                filter = state.filter,
+        var showMonthPicker by remember { mutableStateOf(false) }
+
+        // ── Month Navigator Bar (Navigate Back / Forward / Pick Any Month) ──
+        MonthNavigatorBar(
+            filter = state.filter,
+            onPrevMonth = viewModel::prevMonth,
+            onNextMonth = viewModel::nextMonth,
+            onOpenPicker = { showMonthPicker = true },
+            onCurrentMonth = viewModel::setCurrentMonth
+        )
+
+        // ── Category filter chips ────────────────────────────────────────
+        AnimatedVisibility(visible = showFilters || state.filter.categoryId != null) {
+            CategoryFilterRow(
                 categories = state.categories,
-                onMonthChange = viewModel::setMonth,
-                onCategoryChange = viewModel::setCategoryFilter
+                selectedCategoryId = state.filter.categoryId,
+                onSelectCategory = viewModel::setCategoryFilter
+            )
+        }
+
+        if (showMonthPicker) {
+            MonthYearPickerDialog(
+                initialYear = state.filter.year,
+                initialMonth = state.filter.month,
+                onDismiss = { showMonthPicker = false },
+                onSelectMonthYear = { y, m ->
+                    viewModel.setMonth(y, m)
+                    showMonthPicker = false
+                },
+                onCurrentMonth = {
+                    viewModel.setCurrentMonth()
+                    showMonthPicker = false
+                }
             )
         }
 
@@ -195,45 +221,256 @@ fun TransactionsScreen(
 }
 
 @Composable
-private fun FilterRow(
+private fun MonthNavigatorBar(
     filter: TransactionsFilter,
-    categories: List<com.spendly.app.core.model.Category>,
-    onMonthChange: (Int, Int) -> Unit,
-    onCategoryChange: (Long?) -> Unit
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onOpenPicker: () -> Unit,
+    onCurrentMonth: () -> Unit
 ) {
+    val now = java.time.LocalDate.now()
+    val isCurrent = filter.year == now.year && filter.month == now.monthValue
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Month chip
-        AssistChip(
-            onClick = {
-                val prev = if (filter.month == 1) Pair(filter.year - 1, 12)
-                          else Pair(filter.year, filter.month - 1)
-                onMonthChange(prev.first, prev.second)
-            },
-            label = { Text(DateTimeUtils.formatMonthYear(filter.year, filter.month)) },
-            leadingIcon = { Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp)) },
-            modifier = Modifier.bounceOnPress()
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Previous month (<) button
+            IconButton(
+                onClick = onPrevMonth,
+                modifier = Modifier
+                    .size(36.dp)
+                    .bounceOnPress()
+            ) {
+                Icon(
+                    Icons.Default.ChevronLeft,
+                    contentDescription = "Previous Month",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
-        // Category filter
-        if (filter.categoryId != null) {
+            // Month Year Pill (Clickable to open dialog)
+            Surface(
+                onClick = onOpenPicker,
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                modifier = Modifier.bounceOnPress()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        DateTimeUtils.formatMonthYear(filter.year, filter.month),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = "Select Month",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Next month (>) button
+            IconButton(
+                onClick = onNextMonth,
+                modifier = Modifier
+                    .size(36.dp)
+                    .bounceOnPress()
+            ) {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = "Next Month",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Shortcut to jump back to current month if navigated away
+        if (!isCurrent) {
+            Surface(
+                onClick = onCurrentMonth,
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.bounceOnPress()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(MaterialTheme.colorScheme.primary, shape = androidx.compose.foundation.shape.CircleShape)
+                    )
+                    Text(
+                        "This Month",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryFilterRow(
+    categories: List<com.spendly.app.core.model.Category>,
+    selectedCategoryId: Long?,
+    onSelectCategory: (Long?) -> Unit
+) {
+    androidx.compose.foundation.lazy.LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        item {
             FilterChip(
-                selected = true,
-                onClick = { onCategoryChange(null) },
-                label = {
-                    Text(categories.find { it.id == filter.categoryId }?.name ?: "Category")
+                selected = selectedCategoryId == null,
+                onClick = { onSelectCategory(null) },
+                label = { Text("All Categories") },
+                modifier = Modifier.bounceOnPress()
+            )
+        }
+        items(categories, key = { it.id }) { cat ->
+            FilterChip(
+                selected = selectedCategoryId == cat.id,
+                onClick = {
+                    onSelectCategory(if (selectedCategoryId == cat.id) null else cat.id)
                 },
-                trailingIcon = {
-                    Icon(Icons.Default.Close, "Clear", Modifier.size(16.dp))
-                },
+                label = { Text(cat.name) },
                 modifier = Modifier.bounceOnPress()
             )
         }
     }
+}
+
+@Composable
+private fun MonthYearPickerDialog(
+    initialYear: Int,
+    initialMonth: Int,
+    onDismiss: () -> Unit,
+    onSelectMonthYear: (Int, Int) -> Unit,
+    onCurrentMonth: () -> Unit
+) {
+    var selectedYear by remember { mutableIntStateOf(initialYear) }
+    val monthNames = listOf(
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    )
+    val now = java.time.LocalDate.now()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { selectedYear-- },
+                    modifier = Modifier.bounceOnPress()
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Previous Year")
+                }
+                Text(
+                    text = "$selectedYear",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(
+                    onClick = { selectedYear++ },
+                    modifier = Modifier.bounceOnPress()
+                ) {
+                    Icon(Icons.Default.ChevronRight, "Next Year")
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // 12 Months in 4 rows of 3 columns
+                for (row in 0..3) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (col in 0..2) {
+                            val monthNum = row * 3 + col + 1
+                            val isSelected = selectedYear == initialYear && monthNum == initialMonth
+                            val isRealCurrent = selectedYear == now.year && monthNum == now.monthValue
+
+                            Surface(
+                                onClick = { onSelectMonthYear(selectedYear, monthNum) },
+                                shape = MaterialTheme.shapes.medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else if (isRealCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = if (isRealCurrent && !isSelected)
+                                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                                else null,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .bounceOnPress()
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = monthNames[monthNum - 1],
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected || isRealCurrent) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onCurrentMonth,
+                modifier = Modifier.bounceOnPress()
+            ) {
+                Text("Jump to Current Month", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

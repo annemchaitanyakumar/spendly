@@ -26,9 +26,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.res.painterResource
+import com.spendly.app.R
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.settings.LocationCapturePref
 import com.spendly.app.core.settings.ThemeMode
+import com.spendly.app.ui.components.bounceOnPress
 import com.spendly.app.ui.spendlyViewModel
 import kotlinx.coroutines.launch
 
@@ -525,52 +532,338 @@ fun SettingsScreen(
             }
         }
 
-        // ── Detection Debugger / Synthetic Test Card ───────────────────
-        item(key = "debugger_card") {
+        // ── Notification Preview & System Alerts ───────────────────────
+        item(key = "notification_preview_card") {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                 shape = MaterialTheme.shapes.large
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                var selectedPresetIndex by remember { mutableIntStateOf(0) }
+                val presets = remember {
+                    listOf(
+                        NotificationPreviewPreset(
+                            name = "PhonePe (₹450)",
+                            amountMinor = 45000L,
+                            merchant = "Starbucks",
+                            category = "Food & Dining",
+                            source = "PhonePe",
+                            recordType = "PAID",
+                            pkg = "com.phonepe.app",
+                            sampleText = "Paid Rs. 450 to Starbucks on PhonePe"
+                        ),
+                        NotificationPreviewPreset(
+                            name = "Google Pay (₹1,250)",
+                            amountMinor = 125000L,
+                            merchant = "Swiggy",
+                            category = "Food & Dining",
+                            source = "Google Pay",
+                            recordType = "PAID",
+                            pkg = "com.google.android.apps.nbu.paisa.user",
+                            sampleText = "You paid ₹1,250.00 to Swiggy using UPI"
+                        ),
+                        NotificationPreviewPreset(
+                            name = "Paytm (₹280)",
+                            amountMinor = 28000L,
+                            merchant = "Uber",
+                            category = "Transport",
+                            source = "Paytm",
+                            recordType = "PAID",
+                            pkg = "net.one97.paytm",
+                            sampleText = "Paid Rs 280 to Uber"
+                        ),
+                        NotificationPreviewPreset(
+                            name = "Salary (₹45,000)",
+                            amountMinor = 4500000L,
+                            merchant = "Infosys Ltd",
+                            category = "Salary & Income",
+                            source = "HDFC Bank",
+                            recordType = "CREDIT",
+                            pkg = "com.snapwork.hdfc",
+                            sampleText = "A/c *1234 credited with INR 45,000.00 from Infosys Ltd"
+                        ),
+                        NotificationPreviewPreset(
+                            name = "Refund (₹350)",
+                            amountMinor = 35000L,
+                            merchant = "Amazon",
+                            category = "Shopping",
+                            source = "Amazon",
+                            recordType = "REFUND",
+                            pkg = "com.phonepe.app",
+                            sampleText = "Refund of Rs. 350 initiated from Amazon"
+                        )
+                    )
+                }
+
+                val currentPreset = presets[selectedPresetIndex]
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.BugReport, null, tint = MaterialTheme.colorScheme.primary)
-                            Text("Notification Detection Debugger", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        }
-                        IconButton(onClick = { showDebugSection = !showDebugSection }) {
-                            Icon(if (showDebugSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                            Icon(Icons.Default.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary)
+                            Text("Notification & Status Bar Preview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         }
                     }
 
                     Text(
-                        "Test notification regex patterns and pipeline stages using synthetic, privacy-safe test samples.",
+                        "Live preview of Spendly's high-visibility system status bar favicon and executive OLED notification panel.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // Preset Chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presets.forEachIndexed { index, preset ->
+                            FilterChip(
+                                selected = selectedPresetIndex == index,
+                                onClick = { selectedPresetIndex = index },
+                                label = { Text(preset.name) },
+                                modifier = Modifier.bounceOnPress()
+                            )
+                        }
+                    }
+
+                    // Status Bar Simulation Strip
+                    Surface(
+                        color = Color(0xFF000000),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF222222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "9:41",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFDFBF7)
+                                    )
+                                    // Status bar favicon preview
+                                    Image(
+                                        painter = painterResource(id = R.drawable.ic_stat_spendly),
+                                        contentDescription = "Status Bar Favicon",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.SignalCellularAlt, null, tint = Color(0xFF888888), modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Wifi, null, tint = Color(0xFF888888), modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.BatteryFull, null, tint = Color(0xFF888888), modifier = Modifier.size(14.dp))
+                                }
+                            }
+                            Text(
+                                "✦ System Status Bar: High-visibility solid 'S' monogram favicon",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFA09E97),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Notification Drawer Card Mockup
+                    Surface(
+                        color = Color(0xFF000000),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFF222222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Header Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.ic_app_icon),
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                    )
+                                    Text(
+                                        "Spendly Auto-Capture",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFA09E97)
+                                    )
+                                }
+
+                                Surface(
+                                    color = Color(0xFF141414),
+                                    shape = RoundedCornerShape(100.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF333333))
+                                ) {
+                                    Text(
+                                        text = currentPreset.recordType,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFDFBF7),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Amount & Payee Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                val amountStr = CurrencyFormatter.formatMinor(currentPreset.amountMinor, "INR")
+                                Text(
+                                    text = amountStr,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFDFBF7)
+                                )
+                                val payeePrefix = if (currentPreset.recordType == "CREDIT" || currentPreset.recordType == "REFUND") "from " else "to "
+                                Text(
+                                    text = "$payeePrefix${currentPreset.merchant}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFFC8C5BD),
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                            }
+
+                            // Meta Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    currentPreset.category,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFDFBF7)
+                                )
+                                Text(" • ", color = Color(0xFF555555), style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    currentPreset.source,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFFA09E97)
+                                )
+                                Text(" • ", color = Color(0xFF555555), style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    "Ref: 4296...",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF666666)
+                                )
+                            }
+
+                            // Actions Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    color = Color(0xFF1A1A1A),
+                                    shape = RoundedCornerShape(100.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF333333))
+                                ) {
+                                    Text(
+                                        "Undo",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFDFBF7),
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Surface(
+                                    color = Color(0xFFFDFBF7),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text(
+                                        "Edit Details",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF000000),
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Test Live Notification Alert Button
+                    Button(
+                        onClick = {
+                            viewModel.triggerSimulatedNotificationDirect(
+                                context = context,
+                                amountMinor = currentPreset.amountMinor,
+                                currencyCode = "INR",
+                                label = if (currentPreset.recordType == "CREDIT") "Credited" else if (currentPreset.recordType == "REFUND") "Refund" else "Paid",
+                                merchant = currentPreset.merchant,
+                                category = currentPreset.category,
+                                source = currentPreset.source,
+                                ref = "429612345678"
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bounceOnPress()
+                    ) {
+                        Icon(Icons.Default.Notifications, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Trigger Live Alert on Phone", fontWeight = FontWeight.Bold)
+                    }
+
+                    // Collapsible Parser Pipeline Debugger
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Advanced Pipeline Debugger", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        IconButton(onClick = { showDebugSection = !showDebugSection }) {
+                            Icon(if (showDebugSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
                     AnimatedVisibility(visible = showDebugSection) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Run Synthetic Test Case:", style = MaterialTheme.typography.labelMedium)
-                            val testCases = listOf(
-                                Triple("PhonePe", "com.phonepe.app", "Paid Rs. 450 to Starbucks on PhonePe"),
-                                Triple("Google Pay", "com.google.android.apps.nbu.paisa.user", "You paid ₹1,250.00 to Swiggy using UPI"),
-                                Triple("Paytm", "net.one97.paytm", "Paid Rs 280 to Uber"),
-                                Triple("Refund", "com.phonepe.app", "Refund of Rs. 350 initiated from Amazon"),
-                                Triple("Failure", "net.one97.paytm", "Payment of Rs 900 failed at Reliance Fresh")
-                            )
-
-                            testCases.forEach { (label, pkg, text) ->
-                                SuggestionChip(
-                                    onClick = {
-                                        viewModel.testParser(pkg, "Transaction Alert", text)
-                                    },
-                                    label = { Text(label) },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.testParser(currentPreset.pkg, "Transaction Alert", currentPreset.sampleText)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Verify Regex Pipeline for ${currentPreset.source}")
                             }
 
                             state.debugResult?.let { res ->
@@ -580,27 +873,13 @@ fun SettingsScreen(
                                     else MaterialTheme.colorScheme.surfaceContainerHighest,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(
                                             "Parser: ${res.parserName} · Direction: ${res.direction}",
                                             fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelLarge
+                                            style = MaterialTheme.typography.labelMedium
                                         )
                                         Text(res.summary, style = MaterialTheme.typography.bodySmall)
-
-                                        Button(
-                                            onClick = { viewModel.triggerSimulatedNotification(context, res) },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            ),
-                                            shape = MaterialTheme.shapes.medium,
-                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                                        ) {
-                                            Icon(Icons.Default.Notifications, null, modifier = Modifier.size(16.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Test System Notification Alert", fontWeight = FontWeight.Bold)
-                                        }
                                     }
                                 }
                             }
@@ -668,3 +947,14 @@ private fun isNotificationListenerEnabled(context: Context): Boolean {
     val myComponent = "${context.packageName}/${com.spendly.app.core.notifications.SpendlyNotificationListener::class.java.name}"
     return enabledListeners.contains(myComponent)
 }
+
+private data class NotificationPreviewPreset(
+    val name: String,
+    val amountMinor: Long,
+    val merchant: String,
+    val category: String,
+    val source: String,
+    val recordType: String,
+    val pkg: String,
+    val sampleText: String
+)

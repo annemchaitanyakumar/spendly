@@ -90,6 +90,22 @@ class TransactionsViewModel(
     fun setFilter(filter: TransactionsFilter) { _filter.value = filter }
     fun setSearchQuery(q: String) { _filter.update { it.copy(searchQuery = q) } }
     fun setMonth(year: Int, month: Int) { _filter.update { it.copy(year = year, month = month) } }
+    fun nextMonth() {
+        _filter.update {
+            if (it.month == 12) it.copy(year = it.year + 1, month = 1)
+            else it.copy(month = it.month + 1)
+        }
+    }
+    fun prevMonth() {
+        _filter.update {
+            if (it.month == 1) it.copy(year = it.year - 1, month = 12)
+            else it.copy(month = it.month - 1)
+        }
+    }
+    fun setCurrentMonth() {
+        val now = java.time.LocalDate.now()
+        _filter.update { it.copy(year = now.year, month = now.monthValue) }
+    }
     fun setCategoryFilter(id: Long?) { _filter.update { it.copy(categoryId = id) } }
 
     fun deleteExpense(expense: Expense) {

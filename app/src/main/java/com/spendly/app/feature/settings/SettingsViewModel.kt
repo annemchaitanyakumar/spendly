@@ -200,20 +200,53 @@ class SettingsViewModel(
         }
     }
 
-    fun triggerSimulatedNotification(context: android.content.Context, result: ParserDebugResult) {
-        val amount = result.amountMinor ?: 45000L
-        val merchant = result.merchant.ifBlank { "Starbucks" }
+    fun triggerSimulatedNotificationDirect(
+        context: android.content.Context,
+        amountMinor: Long = 45000L,
+        currencyCode: String = "INR",
+        label: String = "Paid",
+        merchant: String = "Starbucks",
+        category: String = "Food & Dining",
+        source: String = "PhonePe",
+        ref: String = "429612345678"
+    ) {
         com.spendly.app.core.notifications.ExpenseNotificationHelper.showAutoAddedExpenseNotification(
             context = context,
             expenseId = 999999L,
             candidateId = 999999L,
+            amountMinor = amountMinor,
+            currencyCode = currencyCode,
+            label = label,
+            merchantOrRecipient = merchant,
+            categoryName = category,
+            sourceDisplayName = source,
+            transactionRef = ref
+        )
+    }
+
+    fun triggerSimulatedNotification(context: android.content.Context, result: ParserDebugResult) {
+        val amount = result.amountMinor ?: 45000L
+        val merchant = result.merchant.ifBlank { "Starbucks" }
+        val label = when (result.recordType) {
+            "TRANSFER" -> "Transfer"
+            "REFUND" -> "Refund"
+            "INCOME", "CREDIT" -> "Credited"
+            else -> "Paid"
+        }
+        val category = when (result.recordType) {
+            "TRANSFER" -> "Transfers & UPI"
+            "INCOME", "CREDIT" -> "Salary & Income"
+            else -> "Food & Dining"
+        }
+        triggerSimulatedNotificationDirect(
+            context = context,
             amountMinor = amount,
             currencyCode = result.currencyCode,
-            label = if (result.recordType == "TRANSFER") "Transfer" else "Paid",
-            merchantOrRecipient = merchant,
-            categoryName = if (result.recordType == "TRANSFER") "Transfers & UPI" else "Food & Dining",
-            sourceDisplayName = result.parserName.ifBlank { "Test Notification" },
-            transactionRef = "429612345678"
+            label = label,
+            merchant = merchant,
+            category = category,
+            source = result.parserName.ifBlank { "Test Notification" },
+            ref = "429612345678"
         )
     }
 }

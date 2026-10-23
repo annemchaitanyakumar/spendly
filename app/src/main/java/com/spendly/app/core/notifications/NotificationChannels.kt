@@ -199,16 +199,6 @@ object ExpenseNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(
-                android.R.drawable.ic_menu_edit,
-                "Edit",
-                openPending
-            )
-            .addAction(
-                android.R.drawable.ic_menu_delete,
-                "Undo",
-                undoPending
-            )
 
         val notification = builder.build()
 
@@ -305,8 +295,6 @@ object ExpenseNotificationHelper {
             .setContentIntent(openPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .addAction(android.R.drawable.ic_input_add, "Add", openPending)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPending)
 
         val notification = builder.build()
 
