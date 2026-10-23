@@ -105,10 +105,16 @@ fun SettingsScreen(
         viewModel.checkLocationPermission()
     }
 
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding) + 16.dp
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            top = contentPadding.calculateTopPadding() + 16.dp,
+            top = effectiveTopPadding,
             bottom = contentPadding.calculateBottomPadding() + 80.dp,
             start = 16.dp,
             end = 16.dp
@@ -124,9 +130,9 @@ fun SettingsScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF0B140E),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    shadowElevation = 0.dp,
                     modifier = Modifier.size(46.dp)
                 ) {
                     androidx.compose.foundation.Image(

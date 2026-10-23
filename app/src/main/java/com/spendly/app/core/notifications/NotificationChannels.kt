@@ -187,8 +187,8 @@ object ExpenseNotificationHelper {
                     setLargeIcon(largeIconBitmap)
                 }
             }
-            .setColor(0xFF10B981.toInt())
-            .setColorized(true)
+            .setColor(0xFF000000.toInt())
+            .setColorized(false)
             .setContentTitle(title)
             .setContentText(contentText)
             .setCustomContentView(collapsedViews)
@@ -295,8 +295,8 @@ object ExpenseNotificationHelper {
                     setLargeIcon(largeIconBitmap)
                 }
             }
-            .setColor(0xFF10B981.toInt())
-            .setColorized(true)
+            .setColor(0xFF000000.toInt())
+            .setColorized(false)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
             .setCustomContentView(collapsedViews)

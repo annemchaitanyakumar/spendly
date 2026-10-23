@@ -3,10 +3,9 @@ package com.spendly.app.ui.components
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,13 +25,9 @@ import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.DayCashFlow
 import com.spendly.app.core.model.Expense
-import com.spendly.app.theme.ExpenseRed
-import com.spendly.app.theme.IncomeGreen
-import java.time.DayOfWeek
+import com.spendly.app.theme.*
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun SpendCalendarView(
@@ -72,16 +67,19 @@ fun SpendCalendarView(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Month Selector & Cashflow Highlights
+        // ── 1. Month Navigation & High-Contrast Cash Flow Strip ──────────
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            tonalElevation = 1.dp
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 0.dp
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                // Header with navigation arrows
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header with navigation arrows and quick jump
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -91,18 +89,29 @@ fun SpendCalendarView(
                         onClick = onPrevMonth,
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Default.ChevronLeft, "Previous month")
+                        Icon(
+                            Icons.Default.ChevronLeft,
+                            contentDescription = "Previous month",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Text(
-                            text = DateTimeUtils.formatMonthYear(year, month),
+                            text = DateTimeUtils.formatMonthYear(year, month).uppercase(),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -113,73 +122,72 @@ fun SpendCalendarView(
                     ) {
                         Icon(
                             Icons.Default.ChevronRight,
-                            "Next month",
+                            contentDescription = "Next month",
                             tint = if (canGoNext) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant
                         )
                     }
                 }
 
-                // Financial Flow Strip
+                // Monochromatic Financial Flow Strip
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FlowMetricItem(
-                        label = "Total Debits",
+                        label = "DEBITS",
                         amountText = CurrencyFormatter.formatMinor(totalDebitsMinor),
-                        color = ExpenseRed,
                         modifier = Modifier.weight(1f)
                     )
                     VerticalDivider(
-                        modifier = Modifier.height(30.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        modifier = Modifier.height(28.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
                     FlowMetricItem(
-                        label = "Total Credits",
+                        label = "CREDITS",
                         amountText = "+${CurrencyFormatter.formatMinor(totalCreditsMinor)}",
-                        color = IncomeGreen,
                         modifier = Modifier.weight(1f)
                     )
                     VerticalDivider(
-                        modifier = Modifier.height(30.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        modifier = Modifier.height(28.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
                     val netBalance = totalCreditsMinor - totalDebitsMinor
                     FlowMetricItem(
-                        label = "Net Flow",
+                        label = "NET FLOW",
                         amountText = if (netBalance >= 0) "+${CurrencyFormatter.formatMinor(netBalance)}" else "-${CurrencyFormatter.formatMinor(-netBalance)}",
-                        color = if (netBalance >= 0) IncomeGreen else ExpenseRed,
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        // Calendar Grid
+        // ── 2. Calendar Grid Card ───────────────────────────────────────
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            tonalElevation = 1.dp
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 0.dp
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
                 // Day of Week Header (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { dayName ->
+                    listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN").forEach { dayName ->
                         Text(
                             text = dayName,
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center
                         )
@@ -192,7 +200,9 @@ fun SpendCalendarView(
 
                 for (rowIndex in 0 until totalRows) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp),
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
                         for (colIndex in 0 until 7) {
@@ -215,7 +225,7 @@ fun SpendCalendarView(
                                     modifier = Modifier.weight(1f)
                                 )
                             } else {
-                                Box(modifier = Modifier.weight(1f).height(58.dp))
+                                Box(modifier = Modifier.weight(1f).height(54.dp))
                             }
                         }
                     }
@@ -223,30 +233,34 @@ fun SpendCalendarView(
             }
         }
 
-        // Selected Day Transactions List
+        // ── 3. Selected Day Transactions Section ────────────────────────
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            tonalElevation = 1.dp
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 0.dp
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             text = selectedDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         val deb = selectedDayFlow?.debitMinor ?: 0L
                         val cred = selectedDayFlow?.creditMinor ?: 0L
                         Text(
-                            text = "Debit: ${CurrencyFormatter.formatMinor(deb)}  •  Credit: ${CurrencyFormatter.formatMinor(cred)}",
+                            text = "Debited: ${CurrencyFormatter.formatMinor(deb)}  •  Credited: ${CurrencyFormatter.formatMinor(cred)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,15 +268,16 @@ fun SpendCalendarView(
 
                     val count = selectedDayFlow?.transactions?.size ?: 0
                     Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Text(
                             text = "$count ${if (count == 1) "txn" else "txns"}",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -272,7 +287,7 @@ fun SpendCalendarView(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 20.dp),
+                            .padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -300,7 +315,6 @@ fun SpendCalendarView(
 private fun FlowMetricItem(
     label: String,
     amountText: String,
-    color: Color,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -311,13 +325,15 @@ private fun FlowMetricItem(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            letterSpacing = 0.5.sp
         )
         Text(
             text = amountText,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = color,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -335,9 +351,14 @@ private fun CalendarDayCell(
     modifier: Modifier = Modifier
 ) {
     val bgColor = when {
-        isSelected -> MaterialTheme.colorScheme.primaryContainer
-        isToday -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        isSelected -> MaterialTheme.colorScheme.primary // Warm White pill
+        isToday -> MaterialTheme.colorScheme.surfaceContainerHigh
         else -> Color.Transparent
+    }
+
+    val contentColor = when {
+        isSelected -> MaterialTheme.colorScheme.onPrimary // OLED pitch black
+        else -> MaterialTheme.colorScheme.onSurface // Warm White
     }
 
     val borderColor = when {
@@ -349,50 +370,79 @@ private fun CalendarDayCell(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(58.dp)
-            .padding(1.dp),
-        shape = RoundedCornerShape(10.dp),
+            .height(54.dp)
+            .padding(2.dp),
+        shape = RoundedCornerShape(12.dp),
         color = bgColor,
         border = BorderStroke(1.dp, borderColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(2.dp),
+                .padding(vertical = 4.dp, horizontal = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Day Number
             Text(
                 text = "$dayNumber",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
+                color = contentColor
             )
 
-            // Flow Indicators
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+            // Flow Indicators (Dots)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (debitMinor > 0L) {
-                    Text(
-                        text = "-${formatCompactAmount(debitMinor)}",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ExpenseRed,
-                        maxLines = 1
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.primary
+                            )
                     )
                 }
                 if (creditMinor > 0L) {
-                    Text(
-                        text = "+${formatCompactAmount(creditMinor)}",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = IncomeGreen,
-                        maxLines = 1
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .border(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.primary,
+                                CircleShape
+                            )
                     )
                 }
+            }
+
+            // Compact amount label if spending exists
+            if (debitMinor > 0L) {
+                Text(
+                    text = formatCompactAmount(debitMinor),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else if (creditMinor > 0L) {
+                Text(
+                    text = "+${formatCompactAmount(creditMinor)}",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Spacer(Modifier.height(10.dp))
             }
         }
     }

@@ -55,12 +55,16 @@ fun NotesScreen(
         }
     }
 
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding) + 16.dp
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            top = contentPadding.calculateTopPadding() + 16.dp,
+            top = effectiveTopPadding,
             bottom = contentPadding.calculateBottomPadding() + 84.dp,
             start = 16.dp,
             end = 16.dp

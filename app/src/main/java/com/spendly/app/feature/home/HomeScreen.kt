@@ -84,10 +84,14 @@ fun HomeScreen(
         return
     }
 
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding) + 16.dp
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            top = contentPadding.calculateTopPadding() + 16.dp,
+            top = effectiveTopPadding,
             bottom = contentPadding.calculateBottomPadding() + 80.dp,
             start = 16.dp,
             end = 16.dp
@@ -228,7 +232,7 @@ fun HomeScreen(
         } else if (selectedTab == HomeViewTab.INSIGHTS) {
             // ── Financial Insights View ──────────────────────────────
             item(key = "insights_view") {
-                InsightsScreen(contentPadding = PaddingValues(0.dp))
+                InsightsScreen(contentPadding = PaddingValues(0.dp), isNested = true)
             }
         } else {
             // ── Auto-Detected / Auto-Logged Transaction Cards ─────────
@@ -547,10 +551,10 @@ private fun DetectedExpenseCard(
     }
 
     val (badgeBg, badgeText) = when {
-        isCredit -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-        isTransfer -> Pair(Color(0xFFEDE7F6), Color(0xFF5E35B1))
-        candidate.recordType == RecordType.REFUND -> Pair(Color(0xFFE1F5FE), Color(0xFF0277BD))
-        else -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
+        isCredit -> Pair(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
+        isTransfer -> Pair(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
+        candidate.recordType == RecordType.REFUND -> Pair(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
+        else -> Pair(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
     }
 
     val sourceName = when {
@@ -586,9 +590,9 @@ private fun DetectedExpenseCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-        shadowElevation = 2.dp
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -602,7 +606,7 @@ private fun DetectedExpenseCard(
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFE8F5E9)
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -612,14 +616,14 @@ private fun DetectedExpenseCard(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF2E7D32),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = statusPillText,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -654,7 +658,7 @@ private fun DetectedExpenseCard(
                             text = candidate.amountMinor?.let { "$amountPrefix${CurrencyFormatter.formatMinor(it, candidate.currencyCode)}" } ?: "₹0.00",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = if (isCredit) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
@@ -755,16 +759,16 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, OledBorder)
     ) {
         Box(
             modifier = Modifier
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF0D281C),
-                            Color(0xFF06150E)
+                            OledSurface3,
+                            OledSurface1
                         )
                     )
                 )
@@ -781,14 +785,15 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp,
-                        color = Color.White.copy(alpha = 0.75f)
+                        color = WarmWhiteMuted
                     )
 
                     if (changePercent != null) {
                         val isIncrease = changePercent > 0
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isIncrease) Color(0x33FF5252) else Color(0x3369F0AE)
+                            color = OledSurface4,
+                            border = BorderStroke(1.dp, OledBorder)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -798,14 +803,14 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
                                 Icon(
                                     if (isIncrease) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                                     contentDescription = null,
-                                    tint = if (isIncrease) Color(0xFFFF8A80) else Color(0xFFB9F6CA),
+                                    tint = WarmWhite,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
                                     text = "${if (isIncrease) "+" else ""}${String.format("%.1f", changePercent)}%",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isIncrease) Color(0xFFFF8A80) else Color(0xFFB9F6CA)
+                                    color = WarmWhite
                                 )
                             }
                         }
@@ -816,15 +821,15 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
                     text = CurrencyFormatter.formatMinor(animatedTotal.toLong()),
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = WarmWhite
                 )
 
                 // Financial Breakdown Sub-Card: Purchases vs Transfers vs Credits
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    color = Color.Black.copy(alpha = 0.28f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                    color = OledSurface1,
+                    border = BorderStroke(1.dp, OledBorderSubtle)
                 ) {
                     Row(
                         modifier = Modifier
@@ -835,56 +840,56 @@ private fun MonthlyTotalCard(summary: MonthSummary?) {
                     ) {
                         Column {
                             Text(
-                                "💳 Purchases",
+                                "Purchases",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.65f)
+                                color = WarmWhiteMuted
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 CurrencyFormatter.formatMinor(purchasesMinor),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = WarmWhite
                             )
                         }
 
                         VerticalDivider(
                             modifier = Modifier.height(28.dp),
-                            color = Color.White.copy(alpha = 0.15f)
+                            color = OledBorder
                         )
 
                         Column {
                             Text(
-                                "🔄 Transfers Out",
+                                "Transfers Out",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.65f)
+                                color = WarmWhiteMuted
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 CurrencyFormatter.formatMinor(transfersMinor),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFCE93D8)
+                                color = WarmWhite
                             )
                         }
 
                         VerticalDivider(
                             modifier = Modifier.height(28.dp),
-                            color = Color.White.copy(alpha = 0.15f)
+                            color = OledBorder
                         )
 
                         Column {
                             Text(
-                                "💰 Credits In",
+                                "Credits In",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.65f)
+                                color = WarmWhiteMuted
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 "+${CurrencyFormatter.formatMinor(creditsMinor)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFA7F3D0)
+                                color = WarmWhite
                             )
                         }
                     }
@@ -943,8 +948,8 @@ private fun CategoryProgressRow(spending: CategorySpending, total: Long) {
         Surface(
             modifier = Modifier.size(36.dp),
             shape = CircleShape,
-            color = (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f),
-            border = BorderStroke(1.dp, (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.3f))
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.model.AppSpending
+import com.spendly.app.theme.*
 
 @Composable
 fun AppSpendsCard(
@@ -117,13 +118,15 @@ private fun AppSpendRow(
                 Surface(
                     modifier = Modifier.size(34.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = branding.primaryColor.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, branding.primaryColor.copy(alpha = 0.35f))
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = branding.emoji,
-                            fontSize = 16.sp
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -156,13 +159,13 @@ private fun AppSpendRow(
             }
         }
 
-        // Sleek Gradient Progress Bar
+        // Sleek Warm White Progress Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Box(
                 modifier = Modifier
@@ -172,8 +175,8 @@ private fun AppSpendRow(
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                branding.primaryColor,
-                                branding.primaryColor.copy(alpha = 0.75f)
+                                WarmWhite,
+                                WarmWhiteMuted
                             )
                         )
                     )
@@ -189,14 +192,14 @@ data class AppBrandingInfo(
 
 private fun getAppBranding(iconKey: String, name: String): AppBrandingInfo {
     return when (iconKey.lowercase()) {
-        "phonepe" -> AppBrandingInfo("🟣", Color(0xFF6739B7))
-        "gpay" -> AppBrandingInfo("🔵", Color(0xFF1A73E8))
-        "paytm" -> AppBrandingInfo("🔷", Color(0xFF00BAF2))
-        "bhim" -> AppBrandingInfo("🇮🇳", Color(0xFF00897B))
-        "cred" -> AppBrandingInfo("💎", Color(0xFF37474F))
-        "amazon" -> AppBrandingInfo("🟠", Color(0xFFFF9900))
-        "sms" -> AppBrandingInfo("🏦", Color(0xFF546E7A))
-        "manual" -> AppBrandingInfo("✍️", Color(0xFF10B981))
-        else -> AppBrandingInfo("💳", Color(0xFF7E57C2))
+        "phonepe" -> AppBrandingInfo("⚡", WarmWhite)
+        "gpay" -> AppBrandingInfo("G", WarmWhite)
+        "paytm" -> AppBrandingInfo("P", WarmWhite)
+        "bhim" -> AppBrandingInfo("₹", WarmWhite)
+        "cred" -> AppBrandingInfo("◇", WarmWhite)
+        "amazon" -> AppBrandingInfo("A", WarmWhite)
+        "sms" -> AppBrandingInfo("✉", WarmWhite)
+        "manual" -> AppBrandingInfo("✎", WarmWhite)
+        else -> AppBrandingInfo("💳", WarmWhite)
     }
 }

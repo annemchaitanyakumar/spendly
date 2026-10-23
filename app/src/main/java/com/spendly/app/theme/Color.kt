@@ -3,49 +3,61 @@ package com.spendly.app.theme
 import androidx.compose.ui.graphics.Color
 
 // ─────────────────────────────────────────────────────────────────────
-//  Spendly color palette — deep forest green + warm neutrals
+//  Pure OLED Black & Warm White Monochrome Palette
+//  No colors: strictly OLED pitch black (#000000) and warm white (#FDFBF7)
 // ─────────────────────────────────────────────────────────────────────
 
-// Primary — Forest Green family
-val SpendlyGreen10 = Color(0xFF002109)
-val SpendlyGreen20 = Color(0xFF00391A)
-val SpendlyGreen30 = Color(0xFF00522A)
-val SpendlyGreen40 = Color(0xFF006D3A)  // Primary key color
-val SpendlyGreen50 = Color(0xFF008A4B)
-val SpendlyGreen60 = Color(0xFF00A85C)
-val SpendlyGreen70 = Color(0xFF14C470)
-val SpendlyGreen80 = Color(0xFF52E092)
-val SpendlyGreen90 = Color(0xFF7FFCAD)
-val SpendlyGreen95 = Color(0xFFBBFFD6)
-val SpendlyGreen99 = Color(0xFFF0FFF5)
+val OledBlack = Color(0xFF000000)
+val OledSurface1 = Color(0xFF0A0A0A)
+val OledSurface2 = Color(0xFF121212)
+val OledSurface3 = Color(0xFF1A1A1A)
+val OledSurface4 = Color(0xFF242424)
+val OledBorder = Color(0xFF2C2C2C)
+val OledBorderSubtle = Color(0xFF1F1F1F)
 
-// Neutral surfaces
-val SpendlyNeutral10 = Color(0xFF1A1C1A)   // Dark background
-val SpendlyNeutral20 = Color(0xFF2E312E)
-val SpendlyNeutral30 = Color(0xFF444845)
-val SpendlyNeutral40 = Color(0xFF5C5F5C)
-val SpendlyNeutral50 = Color(0xFF747874)
-val SpendlyNeutral60 = Color(0xFF8E918E)
-val SpendlyNeutral70 = Color(0xFFA9ACA9)
-val SpendlyNeutral80 = Color(0xFFC4C7C4)
-val SpendlyNeutral87 = Color(0xFFD7DAD7)
-val SpendlyNeutral90 = Color(0xFFE0E3E0)
-val SpendlyNeutral95 = Color(0xFFEFF2EF)
-val SpendlyNeutral99 = Color(0xFFF8FAF7)   // Light background
+val WarmWhite = Color(0xFFFDFBF7)
+val WarmWhiteHigh = Color(0xFFFFFFFF)
+val WarmWhiteMuted = Color(0xFFA8A29E)
+val WarmWhiteSubtle = Color(0xFF78716C)
+val WarmWhiteDim = Color(0xFF52525B)
 
-// Neutral variant
-val SpendlyNeutralVariant30 = Color(0xFF404942)
-val SpendlyNeutralVariant50 = Color(0xFF6B7470)
-val SpendlyNeutralVariant80 = Color(0xFFBBCAC2)
-val SpendlyNeutralVariant90 = Color(0xFFD6E8DF)
+// Aliases mapped strictly to OLED Black and Warm White monochrome
+val SpendlyGreen10 = OledSurface1
+val SpendlyGreen20 = OledSurface2
+val SpendlyGreen30 = OledSurface3
+val SpendlyGreen40 = WarmWhite
+val SpendlyGreen50 = WarmWhite
+val SpendlyGreen60 = WarmWhite
+val SpendlyGreen70 = WarmWhite
+val SpendlyGreen80 = WarmWhite
+val SpendlyGreen90 = OledSurface3
+val SpendlyGreen95 = OledSurface2
+val SpendlyGreen99 = OledSurface1
 
-// Error
-val ErrorRed = Color(0xFFB3261E)
-val ErrorRedContainer = Color(0xFFF9DEDC)
-val ErrorRedDark = Color(0xFFF2B8B5)
+val SpendlyNeutral10 = OledBlack
+val SpendlyNeutral20 = OledSurface1
+val SpendlyNeutral30 = OledSurface2
+val SpendlyNeutral40 = OledSurface3
+val SpendlyNeutral50 = WarmWhiteDim
+val SpendlyNeutral60 = WarmWhiteSubtle
+val SpendlyNeutral70 = WarmWhiteMuted
+val SpendlyNeutral80 = WarmWhiteMuted
+val SpendlyNeutral87 = WarmWhite
+val SpendlyNeutral90 = WarmWhite
+val SpendlyNeutral95 = WarmWhite
+val SpendlyNeutral99 = OledBlack
 
-// Semantic
-val IncomeGreen = Color(0xFF1DB954)
-val ExpenseRed = Color(0xFFE53935)
-val PendingAmber = Color(0xFFFFA726)
-val RefundBlue = Color(0xFF42A5F5)
+val SpendlyNeutralVariant30 = OledSurface2
+val SpendlyNeutralVariant50 = OledBorder
+val SpendlyNeutralVariant80 = WarmWhiteMuted
+val SpendlyNeutralVariant90 = OledSurface3
+
+// Error & Semantics — mapped strictly to Warm White and OLED contrast
+val ErrorRed = WarmWhite
+val ErrorRedContainer = OledSurface3
+val ErrorRedDark = WarmWhite
+
+val IncomeGreen = WarmWhite
+val ExpenseRed = WarmWhiteMuted
+val PendingAmber = WarmWhiteMuted
+val RefundBlue = WarmWhite

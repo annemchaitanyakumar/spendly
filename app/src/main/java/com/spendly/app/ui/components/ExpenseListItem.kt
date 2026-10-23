@@ -19,10 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.*
-import com.spendly.app.theme.ExpenseRed
-import com.spendly.app.theme.IncomeGreen
-import com.spendly.app.theme.PendingAmber
-import com.spendly.app.theme.RefundBlue
+import com.spendly.app.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,18 +29,7 @@ fun ExpenseListItem(
     onDelete: ((Expense) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val amountColor = when {
-        expense.recordType == RecordType.REFUND -> RefundBlue
-        expense.direction == TransactionDirection.CREDIT -> IncomeGreen
-        expense.recordType == RecordType.PENDING -> PendingAmber
-        else -> ExpenseRed
-    }
-
-    val catColor = remember(expense.categoryColorHex) {
-        expense.categoryColorHex?.let {
-            try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
-        }
-    }
+    val amountColor = MaterialTheme.colorScheme.onSurface
 
     val labelText = when {
         expense.recordType == RecordType.TRANSFER -> "Transfer"
@@ -52,19 +38,15 @@ fun ExpenseListItem(
         else -> "Paid"
     }
 
-    val (badgeBg, badgeText) = when (labelText) {
-        "Transfer" -> Pair(Color(0xFFEDE7F6), Color(0xFF5E35B1))
-        "Received" -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-        "Refund" -> Pair(Color(0xFFE1F5FE), Color(0xFF0277BD))
-        else -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
-    }
+    val badgeBg = MaterialTheme.colorScheme.surfaceContainerHigh
+    val badgeText = MaterialTheme.colorScheme.onSurface
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        tonalElevation = 0.dp,
         onClick = { onClick?.invoke(expense) }
     ) {
         Row(
@@ -76,8 +58,8 @@ fun ExpenseListItem(
             Surface(
                 modifier = Modifier.size(46.dp),
                 shape = CircleShape,
-                color = (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, (catColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.25f))
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(

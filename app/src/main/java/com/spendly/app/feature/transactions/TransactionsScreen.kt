@@ -1,6 +1,7 @@
 package com.spendly.app.feature.transactions
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
@@ -46,10 +47,18 @@ fun TransactionsScreen(
         }
     }
 
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val effectiveTop = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(
+                top = effectiveTop,
+                bottom = contentPadding.calculateBottomPadding()
+            )
     ) {
         // ── Top bar ─────────────────────────────────────────────────
         TopAppBar(

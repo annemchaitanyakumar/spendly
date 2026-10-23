@@ -356,10 +356,6 @@ private fun TypeFilterChip(
 
 @Composable
 private fun CategoryChip(category: Category, selected: Boolean, onClick: () -> Unit) {
-    val catColor = remember(category.colorHex) {
-        try { Color(android.graphics.Color.parseColor(category.colorHex)) } catch (_: Exception) { Color.Gray }
-    }
-
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -370,8 +366,8 @@ private fun CategoryChip(category: Category, selected: Boolean, onClick: () -> U
             ) 
         },
         colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = catColor.copy(alpha = 0.18f),
-            selectedLabelColor = catColor
+            selectedContainerColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
         ),
         shape = RoundedCornerShape(10.dp)
     )

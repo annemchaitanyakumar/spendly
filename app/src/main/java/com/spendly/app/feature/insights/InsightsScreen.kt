@@ -1,10 +1,11 @@
 package com.spendly.app.feature.insights
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,159 +26,229 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.*
+import com.spendly.app.theme.*
 import com.spendly.app.ui.spendlyViewModel
 import kotlin.math.min
 
 @Composable
 fun InsightsScreen(
     contentPadding: PaddingValues,
+    isNested: Boolean = false,
     viewModel: InsightsViewModel = spendlyViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarTop, cutoutTop) + 16.dp
 
-    LazyColumn(
-        contentPadding = PaddingValues(
-            top = contentPadding.calculateTopPadding() + 16.dp,
-            bottom = contentPadding.calculateBottomPadding() + 80.dp,
-            start = 16.dp,
-            end = 16.dp
-        ),
+    if (isNested) {
+        // When embedded inside another vertically scrollable container (e.g. HomeScreen LazyColumn),
+        // render with a standard Column to prevent IllegalStateException.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            InsightsContent(state = state, viewModel = viewModel)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(
+                top = effectiveTopPadding,
+                bottom = contentPadding.calculateBottomPadding() + 80.dp,
+                start = 16.dp,
+                end = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                InsightsContent(state = state, viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InsightsContent(
+    state: InsightsUiState,
+    viewModel: InsightsViewModel
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // ── Header ────────────────────────────────────────────────────
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Insights",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Text(
-                    "Insights",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Row {
-                    IconButton(onClick = viewModel::previousMonth) {
-                        Icon(Icons.Default.ChevronLeft, "Previous month")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = viewModel::previousMonth,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ChevronLeft,
+                            "Previous month",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                    TextButton(onClick = {}) {
-                        Text(DateTimeUtils.formatMonthYear(state.currentYear, state.currentMonth))
-                    }
-                    IconButton(onClick = viewModel::nextMonth) {
-                        Icon(Icons.Default.ChevronRight, "Next month")
+                    Text(
+                        text = DateTimeUtils.formatMonthYear(state.currentYear, state.currentMonth),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = viewModel::nextMonth,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            "Next month",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
         }
 
         if (state.isLoading) {
-            item { Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }}
-            return@LazyColumn
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+            return
         }
 
         val summary = state.summary
 
         if (summary == null || summary.totalMinor == 0L) {
-            item { InsightsEmptyState() }
-            return@LazyColumn
+            InsightsEmptyState()
+            return
         }
 
         // ── AI Financial Advisor Card ──────────────────────────────────
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                ),
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth()
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            "AI Financial Advisor",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = { viewModel.generateAiAnalysis() },
+                        enabled = !state.isAnalyzing,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        if (state.isAnalyzing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
                             )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Analyzing...", style = MaterialTheme.typography.labelSmall)
+                        } else {
+                            Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
                             Text(
-                                "AI Financial Advisor",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                if (state.aiAnalysis == null) "Ask AI" else "Refresh",
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
-                        FilledTonalButton(
-                            onClick = { viewModel.generateAiAnalysis() },
-                            enabled = !state.isAnalyzing,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            if (state.isAnalyzing) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Analyzing...")
-                            } else {
-                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (state.aiAnalysis == null) "Ask AI" else "Refresh")
-                            }
-                        }
                     }
+                }
 
-                    if (state.aiAnalysis != null) {
-                        Text(
-                            state.aiAnalysis!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 20.sp
-                        )
-                    } else {
-                        Text(
-                            "Get an executive breakdown of your monthly spending velocity, category burn, and personalized savings tips.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                if (state.aiAnalysis != null) {
+                    Text(
+                        state.aiAnalysis!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 22.sp
+                    )
+                } else {
+                    Text(
+                        "Get an executive breakdown of your monthly spending velocity, category burn, and personalized savings tips.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
 
         // ── Daily bar chart ────────────────────────────────────────────
         if (summary.dailyTotals.isNotEmpty()) {
-            item {
-                InsightCard(title = "Daily Spending") {
-                    DailyBarChart(dailyTotals = summary.dailyTotals)
-                }
+            InsightCard(title = "Daily Spending") {
+                DailyBarChart(dailyTotals = summary.dailyTotals)
             }
         }
 
         // ── Category donut ─────────────────────────────────────────────
         val catBreakdown = summary.categoryBreakdown.filter { it.totalMinor > 0 }
         if (catBreakdown.isNotEmpty()) {
-            item {
-                InsightCard(title = "Spending by Category") {
-                    CategoryDonutSection(categories = catBreakdown, total = summary.totalMinor)
-                }
+            InsightCard(title = "Spending by Category") {
+                CategoryDonutSection(categories = catBreakdown, total = summary.totalMinor)
             }
         }
 
         // ── Top merchants ──────────────────────────────────────────────
         if (summary.topMerchants.isNotEmpty()) {
-            item {
-                InsightCard(title = "Top Merchants") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        summary.topMerchants.take(5).forEachIndexed { index, merchant ->
-                            MerchantRow(rank = index + 1, merchant = merchant)
-                        }
+            InsightCard(title = "Top Merchants") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    summary.topMerchants.take(5).forEachIndexed { index, merchant ->
+                        MerchantRow(rank = index + 1, merchant = merchant)
                     }
                 }
             }
@@ -185,10 +256,8 @@ fun InsightsScreen(
 
         // ── Month comparison ────────────────────────────────────────────
         if (summary.previousMonthTotalMinor != null) {
-            item {
-                InsightCard(title = "Month Comparison") {
-                    MonthComparisonView(summary = summary)
-                }
+            InsightCard(title = "Month Comparison") {
+                MonthComparisonView(summary = summary)
             }
         }
     }
@@ -198,8 +267,9 @@ fun InsightsScreen(
 private fun InsightCard(title: String, content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 0.dp
     ) {
         Column(
@@ -262,11 +332,20 @@ private fun DailyBarChart(dailyTotals: List<DailySpending>) {
 
 @Composable
 private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long) {
+    // Pure monochrome warm white and grayscale shades for OLED black
+    val monochromeShades = listOf(
+        WarmWhite,
+        Color(0xFFE5E2DC),
+        Color(0xFFD4D0C8),
+        Color(0xFFA8A29E),
+        Color(0xFF78716C),
+        Color(0xFF52525B),
+        Color(0xFF3F3F46)
+    )
+
     val colors = remember(categories) {
-        categories.map { cat ->
-            cat.category?.colorHex?.let {
-                try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
-            } ?: Color.Gray
+        categories.mapIndexed { index, _ ->
+            monochromeShades[index % monochromeShades.size]
         }
     }
 
@@ -291,7 +370,7 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
                 val fraction = spending.totalMinor.toFloat() / total
                 val sweepAngle = fraction * 360f * animProgress
                 drawArc(
-                    color = colors.getOrElse(index) { Color.Gray },
+                    color = colors.getOrElse(index) { WarmWhiteMuted },
                     startAngle = startAngle,
                     sweepAngle = sweepAngle,
                     useCenter = false,
@@ -320,11 +399,12 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
                         modifier = Modifier
                             .size(10.dp)
                             .clip(CircleShape)
-                            .background(colors.getOrElse(index) { Color.Gray })
+                            .background(colors.getOrElse(index) { WarmWhiteMuted })
                     )
                     Text(
                         spending.category?.name ?: "Other",
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -332,7 +412,8 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
                     Text(
                         CurrencyFormatter.formatCompact(spending.totalMinor),
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -356,6 +437,7 @@ private fun MerchantRow(rank: Int, merchant: MerchantSpending) {
         Text(
             merchant.merchant.ifBlank { "Unknown" },
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -368,7 +450,8 @@ private fun MerchantRow(rank: Int, merchant: MerchantSpending) {
         Text(
             CurrencyFormatter.formatMinor(merchant.totalMinor),
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
@@ -385,30 +468,45 @@ private fun MonthComparisonView(summary: MonthSummary) {
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Last month", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(CurrencyFormatter.formatMinor(prev), style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold)
+            Text(
+                "Last month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                CurrencyFormatter.formatMinor(prev),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 if (isUp) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                 contentDescription = null,
-                tint = if (isUp) com.spendly.app.theme.ExpenseRed else com.spendly.app.theme.IncomeGreen
+                tint = MaterialTheme.colorScheme.primary
             )
             changePercent?.let {
                 Text(
                     "${if (isUp) "+" else ""}${String.format("%.1f", it)}%",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (isUp) com.spendly.app.theme.ExpenseRed else com.spendly.app.theme.IncomeGreen
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("This month", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(CurrencyFormatter.formatMinor(curr), style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold)
+            Text(
+                "This month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                CurrencyFormatter.formatMinor(curr),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

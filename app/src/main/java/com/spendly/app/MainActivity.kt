@@ -276,7 +276,7 @@ fun SpendlyBottomBar(
     onAddClick: () -> Unit
 ) {
     NavigationBar(
-        tonalElevation = 2.dp,
+        tonalElevation = 0.dp,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         bottomNavItems.forEachIndexed { index, dest ->
