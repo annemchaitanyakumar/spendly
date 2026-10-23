@@ -186,11 +186,16 @@ class SettingsViewModel(
                 onResult("Please enter your Google AI Studio API key first.")
                 return@launch
             }
-            val res = com.spendly.app.core.ai.AiTransactionAgent.verifyTransaction(key, text)
+            val res = com.spendly.app.core.ai.AiTransactionAgent.verifyAndFormat(key, text)
             if (res.isTransaction) {
-                onResult("AI Decision: REAL TRANSACTION\nType: ${res.recordType}\nAmount: ${res.amountMinor?.let { "₹${it / 100.0}" } ?: "N/A"}\nMerchant: ${res.merchant}\nReason: ${res.reason}")
+                val notifPreview = if (res.professionalTitle.isNotBlank()) {
+                    "\n\nProfessional Notification Preview:\n\"${res.professionalTitle}\"\n\"${res.professionalSubtitle}\""
+                } else ""
+                val amountStr = res.amountMinor?.let { "₹${it / 100.0}" } ?: "N/A"
+                val merchantStr = if (res.merchant.isNotBlank()) res.merchant else "None"
+                onResult("AI Decision: REAL TRANSACTION\nType: ${res.recordType}\nAmount: $amountStr\nMerchant: $merchantStr\nCategory: ${res.categoryName}\nReason: ${res.reason}$notifPreview")
             } else {
-                onResult("AI Decision: IGNORED / NON-TRANSACTION\nReason: ${res.reason}")
+                onResult("AI Decision: REJECTED / NON-TRANSACTION\nReason: ${res.reason}")
             }
         }
     }

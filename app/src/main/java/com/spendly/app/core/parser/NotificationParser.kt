@@ -136,10 +136,11 @@ internal object CommonPatterns {
         "auto-debit", "emi paid", "successful payment"
     )
 
-    // Credit keywords (money coming in)
+    // Credit keywords (money coming in - must be confirmed verbs)
     val CREDIT_KEYWORDS = listOf(
-        "payment received", "money received", "amount received", "credited", "credit",
-        "received", "refund", "cashback", "added to", "deposit", "deposited"
+        "payment received", "money received", "amount received", "credited",
+        "received", "credited to", "has been credited", "was credited",
+        "is credited", "credited with", "refund received", "refund credited"
     )
 
     // Failure keywords
@@ -148,9 +149,10 @@ internal object CommonPatterns {
         "could not", "reversal"
     )
 
-    // Refund keywords
+    // Refund keywords (must be confirmed refund statements)
     val REFUND_KEYWORDS = listOf(
-        "refund", "reversal", "reversed", "cashback", "money back"
+        "refund of", "refund received", "refund credited", "refund processed",
+        "refund initiated", "reversal of", "reversed", "money back"
     )
 
     // Pending keywords
@@ -211,7 +213,14 @@ internal object CommonPatterns {
         "apply now", "pre-approved", "loan approved", "personal loan",
         "eligible for a loan", "credit limit increased", "congratulations! you",
         "reward points", "scratch card", "claim your prize", "flat 50% off",
-        "exclusive offer", "win up to", "invite friends"
+        "exclusive offer", "win up to", "invite friends",
+        "t&c apply", "t&c", "terms and conditions", "terms & conditions",
+        "start earning", "earn cashback", "earning cashback", "super cashback",
+        "win cashback", "get cashback", "cashback offer", "cashback on",
+        "don't miss", "dont miss", "chance to win", "stand a chance",
+        "add ₹", "add rs", "add money", "load wallet", "deposit to earn",
+        "save more", "offer valid", "valid till", "hurry up", "limited period offer",
+        "invest in", "open fd", "open account", "open 811", "start sip", "pre-qualified"
     )
 
     val BALANCE_ENQUIRY_KEYWORDS = listOf(

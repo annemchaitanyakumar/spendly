@@ -110,17 +110,30 @@ class SpendlyNotificationListener : NotificationListenerService() {
         if (parsed.direction == TransactionDirection.UNKNOWN) return
         if (parsed.recordType == RecordType.UNKNOWN || parsed.recordType == RecordType.FAILED) return
 
-        // Optional AI Agent Verification (Gemini Free Tier)
+        // Optional AI Agent Verification & Professional Formatting (Gemini Free Tier)
+        var aiCustomTitle: String? = null
+        var aiCustomSubtitle: String? = null
+        var aiMerchant: String? = null
+
         try {
             val settings = settingsRepository.settingsFlow.first()
             if (settings.aiAgentEnabled && settings.geminiApiKey.isNotBlank()) {
-                val aiResult = com.spendly.app.core.ai.AiTransactionAgent.verifyTransaction(
+                val aiResult = com.spendly.app.core.ai.AiTransactionAgent.verifyAndFormat(
                     apiKey = settings.geminiApiKey,
                     text = fullText
                 )
                 if (!aiResult.isTransaction) {
                     Log.d(TAG, "AI Agent rejected notification as non-transaction: ${aiResult.reason}")
                     return
+                }
+                if (aiResult.professionalTitle.isNotBlank()) {
+                    aiCustomTitle = aiResult.professionalTitle
+                }
+                if (aiResult.professionalSubtitle.isNotBlank()) {
+                    aiCustomSubtitle = aiResult.professionalSubtitle
+                }
+                if (aiResult.merchant.isNotBlank()) {
+                    aiMerchant = aiResult.merchant
                 }
             }
         } catch (e: Exception) {
@@ -301,6 +314,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
             }
 
             val expenseMerchant = when {
+                !aiMerchant.isNullOrBlank() -> aiMerchant
                 cleanMerchant.isNotBlank() -> cleanMerchant
                 isSelf -> "Self Account"
                 finalRecordType == RecordType.TRANSFER -> "Money Transfer"
@@ -335,11 +349,13 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 amountMinor = parsed.amountMinor,
                 currencyCode = parsed.currencyCode,
                 label = label,
-                merchantOrRecipient = displayPayee,
+                merchantOrRecipient = if (!aiMerchant.isNullOrBlank()) aiMerchant else displayPayee,
                 categoryName = categoryName,
                 sourceDisplayName = sourceDisplayName,
                 transactionRef = parsed.transactionRef,
-                notificationId = ExpenseNotificationHelper.LATEST_SPEND_NOTIFICATION_ID
+                notificationId = ExpenseNotificationHelper.LATEST_SPEND_NOTIFICATION_ID,
+                customTitle = aiCustomTitle,
+                customSubtitle = aiCustomSubtitle
             )
 
             // Schedule candidate text cleanup after 10 minutes

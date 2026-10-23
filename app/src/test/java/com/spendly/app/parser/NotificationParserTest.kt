@@ -558,4 +558,31 @@ class NotificationParserTest {
         assertNotEquals("any time", merchant)
         assertEquals("", merchant)
     }
+
+    @Test
+    fun testKotak811SuperCashbackPromotionRejected() {
+        val promoResult = registry.parse(
+            sourcePackage = "com.msf.kbank.mobile",
+            title = "Don't miss your 811 Super cashback!",
+            text = "Add ₹10,000 in your 811 Super A/c and start earning cashback. T&C apply",
+            bigText = null
+        )
+        assertNull(
+            "Promotional deposit/cashback advertisement must NEVER be parsed as a refund or transaction",
+            promoResult
+        )
+    }
+
+    @Test
+    fun testRealCashbackCreditIsDetected() {
+        val cashbackResult = registry.parse(
+            sourcePackage = "com.google.android.apps.nbu.paisa.user",
+            title = "Cashback Credited",
+            text = "Cashback of ₹10.00 has been credited to your bank account for UPI payment.",
+            bigText = null
+        )
+        assertNotNull(cashbackResult)
+        assertEquals(1000L, cashbackResult?.amountMinor)
+        assertEquals(TransactionDirection.CREDIT, cashbackResult?.direction)
+    }
 }

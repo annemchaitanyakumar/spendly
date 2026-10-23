@@ -58,7 +58,9 @@ object ExpenseNotificationHelper {
         categoryName: String,
         sourceDisplayName: String = "App",
         transactionRef: String? = null,
-        notificationId: Int = LATEST_SPEND_NOTIFICATION_ID
+        notificationId: Int = LATEST_SPEND_NOTIFICATION_ID,
+        customTitle: String? = null,
+        customSubtitle: String? = null
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -113,16 +115,24 @@ object ExpenseNotificationHelper {
                 !cleanRecipient.equals("Income", ignoreCase = true) &&
                 !cleanRecipient.equals("Received Money", ignoreCase = true)
 
-        // Professional, minimal title requested by user (e.g. "Paid ₹10 for Coffee", "Transferred ₹1", "Received ₹10")
-        val title = when (label) {
-            "Self Transfer" -> if (hasRecipient) "Self Transfer $amountStr to $cleanRecipient" else "Self Transfer $amountStr"
-            "Transfer" -> if (hasRecipient) "Transferred $amountStr to $cleanRecipient" else "Transferred $amountStr"
-            "Received", "Credited" -> if (hasRecipient) "Received $amountStr from $cleanRecipient" else "Received $amountStr"
-            "Refund" -> if (hasRecipient) "Refund $amountStr from $cleanRecipient" else "Refund $amountStr"
-            else -> if (hasRecipient) "Paid $amountStr to $cleanRecipient" else "Paid $amountStr"
+        // Professional, minimal title (supports AI-generated title when enabled)
+        val title = if (!customTitle.isNullOrBlank()) {
+            customTitle
+        } else {
+            when (label) {
+                "Self Transfer" -> if (hasRecipient) "Self Transfer $amountStr to $cleanRecipient" else "Self Transfer $amountStr"
+                "Transfer" -> if (hasRecipient) "Transferred $amountStr to $cleanRecipient" else "Transferred $amountStr"
+                "Received", "Credited" -> if (hasRecipient) "Received $amountStr from $cleanRecipient" else "Received $amountStr"
+                "Refund" -> if (hasRecipient) "Refund $amountStr from $cleanRecipient" else "Refund $amountStr"
+                else -> if (hasRecipient) "Paid $amountStr to $cleanRecipient" else "Paid $amountStr"
+            }
         }
 
-        val contentText = "$categoryName • Spendly"
+        val contentText = if (!customSubtitle.isNullOrBlank()) {
+            customSubtitle
+        } else {
+            "$categoryName • Spendly"
+        }
 
         val bigTextBuilder = StringBuilder()
         bigTextBuilder.append(title).append("\n")
@@ -131,8 +141,19 @@ object ExpenseNotificationHelper {
             bigTextBuilder.append("\nRef: ").append(transactionRef)
         }
 
+        val largeIconBitmap = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (_: Exception) {
+            null
+        }
+
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spendly)
+            .apply {
+                if (largeIconBitmap != null) {
+                    setLargeIcon(largeIconBitmap)
+                }
+            }
             .setContentTitle(title)
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigTextBuilder.toString()))
@@ -205,8 +226,19 @@ object ExpenseNotificationHelper {
         val contentTitle = if (hasMerchant) "$amountStr paid to $cleanMerchant" else "$amountStr payment detected"
         val contentText = "Tap to confirm • Spendly"
 
+        val largeIconBitmap = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (_: Exception) {
+            null
+        }
+
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spendly)
+            .apply {
+                if (largeIconBitmap != null) {
+                    setLargeIcon(largeIconBitmap)
+                }
+            }
             .setContentTitle(contentTitle)
             .setContentText(contentText)
             .setContentIntent(openPending)
