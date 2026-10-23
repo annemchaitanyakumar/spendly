@@ -37,6 +37,7 @@ import com.spendly.app.feature.settings.SettingsScreen
 import com.spendly.app.feature.transactions.TransactionsScreen
 import com.spendly.app.theme.SpendlyTheme
 import com.spendly.app.ui.MainViewModel
+import com.spendly.app.ui.components.InAppExpenseBanner
 import com.spendly.app.ui.spendlyViewModel
 import kotlinx.coroutines.launch
 
@@ -198,91 +199,101 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            SpendlyBottomBar(
-                current = currentDest,
-                onSelect = { currentDest = it },
-                onAddClick = {
-                    expenseIdToEdit = null
-                    showAddExpense = true
-                }
-            )
-        },
-        floatingActionButton = {},
-        contentWindowInsets = WindowInsets.safeDrawing
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            AnimatedContent(
-                targetState = currentDest,
-                transitionSpec = {
-                    val targetIdx = bottomNavItems.indexOf(targetState).let { if (it >= 0) it else 99 }
-                    val initialIdx = bottomNavItems.indexOf(initialState).let { if (it >= 0) it else 99 }
-                    val direction = if (targetIdx >= initialIdx) 1 else -1
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                SpendlyBottomBar(
+                    current = currentDest,
+                    onSelect = { currentDest = it },
+                    onAddClick = {
+                        expenseIdToEdit = null
+                        showAddExpense = true
+                    }
+                )
+            },
+            floatingActionButton = {},
+            contentWindowInsets = WindowInsets.safeDrawing
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                AnimatedContent(
+                    targetState = currentDest,
+                    transitionSpec = {
+                        val targetIdx = bottomNavItems.indexOf(targetState).let { if (it >= 0) it else 99 }
+                        val initialIdx = bottomNavItems.indexOf(initialState).let { if (it >= 0) it else 99 }
+                        val direction = if (targetIdx >= initialIdx) 1 else -1
 
-                    (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
-                        slideInHorizontally(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            initialOffsetX = { direction * (it / 5) }
-                        )).togetherWith(
-                        fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing)) +
-                            slideOutHorizontally(
-                                animationSpec = tween(180, easing = FastOutSlowInEasing),
-                                targetOffsetX = { -direction * (it / 8) }
-                            )
-                    )
-                },
-                label = "nav_anim"
-            ) { dest ->
-                when (dest) {
-                    NavDest.Home -> HomeScreen(
-                        contentPadding = padding,
-                        onAddExpense = {
-                            expenseIdToEdit = null
-                            showAddExpense = true
-                        },
-                        snackbarHostState = snackbarHostState
-                    )
-                    NavDest.Notes -> NotesScreen(
-                        contentPadding = padding,
-                        onAddExpense = {
-                            expenseIdToEdit = null
-                            showAddExpense = true
-                        },
-                        onEditExpense = { id ->
-                            expenseIdToEdit = id
-                            showAddExpense = true
-                        },
-                        snackbarHostState = snackbarHostState,
-                        initialImportText = notesSharedTextToImport,
-                        onClearInitialImportText = { notesSharedTextToImport = null }
-                    )
-                    NavDest.Transactions -> TransactionsScreen(
-                        contentPadding = padding,
-                        onAddExpense = {
-                            expenseIdToEdit = null
-                            showAddExpense = true
-                        },
-                        snackbarHostState = snackbarHostState
-                    )
-                    NavDest.Insights -> InsightsScreen(
-                        contentPadding = padding
-                    )
-                    NavDest.Settings -> SettingsScreen(
-                        contentPadding = padding,
-                        snackbarHostState = snackbarHostState
-                    )
+                        (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
+                            slideInHorizontally(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                initialOffsetX = { direction * (it / 5) }
+                            )).togetherWith(
+                            fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing)) +
+                                slideOutHorizontally(
+                                    animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { -direction * (it / 8) }
+                                )
+                        )
+                    },
+                    label = "nav_anim"
+                ) { dest ->
+                    when (dest) {
+                        NavDest.Home -> HomeScreen(
+                            contentPadding = padding,
+                            onAddExpense = {
+                                expenseIdToEdit = null
+                                showAddExpense = true
+                            },
+                            snackbarHostState = snackbarHostState
+                        )
+                        NavDest.Notes -> NotesScreen(
+                            contentPadding = padding,
+                            onAddExpense = {
+                                expenseIdToEdit = null
+                                showAddExpense = true
+                            },
+                            onEditExpense = { id ->
+                                expenseIdToEdit = id
+                                showAddExpense = true
+                            },
+                            snackbarHostState = snackbarHostState,
+                            initialImportText = notesSharedTextToImport,
+                            onClearInitialImportText = { notesSharedTextToImport = null }
+                        )
+                        NavDest.Transactions -> TransactionsScreen(
+                            contentPadding = padding,
+                            onAddExpense = {
+                                expenseIdToEdit = null
+                                showAddExpense = true
+                            },
+                            snackbarHostState = snackbarHostState
+                        )
+                        NavDest.Insights -> InsightsScreen(
+                            contentPadding = padding
+                        )
+                        NavDest.Settings -> SettingsScreen(
+                            contentPadding = padding,
+                            snackbarHostState = snackbarHostState
+                        )
+                    }
                 }
             }
         }
+
+        // Exact Floating Heads-Up Banner matching the requested card without anything surrounding it
+        InAppExpenseBanner(
+            onEditExpense = { id ->
+                expenseIdToEdit = id
+                showAddExpense = true
+            }
+        )
     }
 
     if (showAddExpense) {

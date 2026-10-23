@@ -14,7 +14,7 @@ import com.spendly.app.R
 import com.spendly.app.core.common.CurrencyFormatter
 
 object NotificationChannels {
-    const val DETECTION_CHANNEL_ID = "spendly_detection"
+    const val DETECTION_CHANNEL_ID = "spendly_detection_v3"
     const val DETECTION_CHANNEL_NAME = "Spend Detections"
 
     fun createChannels(context: Context) {
@@ -22,9 +22,9 @@ object NotificationChannels {
         val channel = NotificationChannel(
             DETECTION_CHANNEL_ID,
             DETECTION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_HIGH
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "High priority notifications for auto-recorded payments, transfers, and credits"
+            description = "Status bar and drawer notifications for auto-recorded payments, transfers, and credits"
             enableVibration(true)
             setShowBadge(true)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
@@ -143,24 +143,26 @@ object ExpenseNotificationHelper {
             else -> "PAID"
         }
 
-        // Custom Collapsed RemoteViews
+        val merchantDisplay = if (hasRecipient) {
+            when (label) {
+                "Transfer", "Self Transfer" -> "to $cleanRecipient"
+                "Received", "Credited", "Refund" -> "from $cleanRecipient"
+                else -> "to $cleanRecipient"
+            }
+        } else ""
+
+        // Custom Collapsed RemoteViews (Clean 2-row layout guaranteed not to clip)
         val collapsedViews = RemoteViews(context.packageName, R.layout.notification_spendly_collapsed).apply {
-            setTextViewText(R.id.notif_title, title)
-            setTextViewText(R.id.notif_subtitle, contentText)
             setTextViewText(R.id.notif_badge, badgeText)
+            setTextViewText(R.id.notif_title, amountStr)
+            val details = if (merchantDisplay.isNotBlank()) "$merchantDisplay • $categoryName" else "$categoryName • Spendly"
+            setTextViewText(R.id.notif_subtitle, details)
         }
 
-        // Custom Expanded RemoteViews
+        // Custom Expanded RemoteViews (Full executive card matching the requested design)
         val expandedViews = RemoteViews(context.packageName, R.layout.notification_spendly_expanded).apply {
             setTextViewText(R.id.notif_exp_badge, badgeText)
             setTextViewText(R.id.notif_exp_amount, amountStr)
-            val merchantDisplay = if (hasRecipient) {
-                when (label) {
-                    "Transfer", "Self Transfer" -> "to $cleanRecipient"
-                    "Received", "Credited", "Refund" -> "from $cleanRecipient"
-                    else -> "to $cleanRecipient"
-                }
-            } else ""
             setTextViewText(R.id.notif_exp_merchant, merchantDisplay)
             setTextViewText(R.id.notif_exp_category, categoryName)
             setTextViewText(R.id.notif_exp_source, sourceDisplayName)
@@ -174,29 +176,34 @@ object ExpenseNotificationHelper {
             setOnClickPendingIntent(R.id.notif_btn_undo, undoPending)
         }
 
-        val largeIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
-        } catch (_: Exception) {
-            null
-        }
+        val event = InAppNotificationEvent(
+            expenseId = expenseId,
+            candidateId = candidateId,
+            amountMinor = amountMinor,
+            currencyCode = currencyCode,
+            label = label,
+            merchantOrRecipient = merchantOrRecipient,
+            categoryName = categoryName,
+            sourceDisplayName = sourceDisplayName,
+            transactionRef = transactionRef
+        )
+
+        // 1. Show pure floating overlay banner over any app (ZERO surrounding chrome!)
+        FloatingExpenseOverlayManager.show(context, event)
+
+        // 2. Publish in-app floating notification event for inside the app
+        InAppNotificationManager.emit(event)
+
+        val appIconBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
 
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spendly)
-            .apply {
-                if (largeIconBitmap != null) {
-                    setLargeIcon(largeIconBitmap)
-                }
-            }
-            .setColor(0xFF000000.toInt())
-            .setColorized(false)
-            .setContentTitle(title)
-            .setContentText(contentText)
+            .setLargeIcon(appIconBitmap)
             .setCustomContentView(collapsedViews)
             .setCustomBigContentView(expandedViews)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setContentIntent(openPending)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
@@ -272,29 +279,14 @@ object ExpenseNotificationHelper {
             setOnClickPendingIntent(R.id.notif_btn_undo, dismissPending)
         }
 
-        val largeIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
-        } catch (_: Exception) {
-            null
-        }
-
         val builder = NotificationCompat.Builder(context, NotificationChannels.DETECTION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spendly)
-            .apply {
-                if (largeIconBitmap != null) {
-                    setLargeIcon(largeIconBitmap)
-                }
-            }
-            .setColor(0xFF000000.toInt())
-            .setColorized(false)
-            .setContentTitle(contentTitle)
-            .setContentText(contentText)
-            .setCustomContentView(collapsedViews)
+            .setCustomContentView(expandedViews)
             .setCustomBigContentView(expandedViews)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomHeadsUpContentView(expandedViews)
             .setContentIntent(openPending)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
 
         val notification = builder.build()
 
