@@ -101,7 +101,8 @@ fun HomeScreen(
                 month = state.currentMonth,
                 onPrevMonth = viewModel::previousMonth,
                 onNextMonth = viewModel::nextMonth,
-                canGoNext = viewModel.canGoToNextMonth()
+                canGoNext = viewModel.canGoToNextMonth(),
+                onRefreshAiCopilot = viewModel::refreshAiCopilotTip
             )
         }
 
@@ -159,6 +160,49 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── AI Financial Copilot Card ─────────────────────────────────
+        if (state.aiCopilotTip != null || state.isGeneratingCopilotTip) {
+            item(key = "ai_copilot_card") {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Text("AI Financial Copilot", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            }
+                            IconButton(onClick = viewModel::dismissCopilotTip, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, "Dismiss", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (state.isGeneratingCopilotTip) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Text("Analyzing monthly spends with Gemini...", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            Text(
+                                state.aiCopilotTip.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 18.sp
                             )
                         }
                     }
@@ -323,7 +367,8 @@ private fun GreetingHeader(
     month: Int,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
-    canGoNext: Boolean
+    canGoNext: Boolean,
+    onRefreshAiCopilot: () -> Unit
 ) {
     val greeting = when (java.time.LocalTime.now().hour) {
         in 5..11 -> "Good morning"
@@ -349,40 +394,55 @@ private fun GreetingHeader(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            // Month navigation capsule
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilledTonalButton(
+                    onClick = onRefreshAiCopilot,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.height(34.dp)
                 ) {
-                    IconButton(onClick = onPrevMonth, modifier = Modifier.size(34.dp)) {
-                        Icon(
-                            Icons.Default.ChevronLeft,
-                            contentDescription = "Previous month",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(
-                        onClick = onNextMonth,
-                        modifier = Modifier.size(34.dp),
-                        enabled = canGoNext
+                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("AI Copilot", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+
+                // Month navigation capsule
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Icon(
-                            Icons.Default.ChevronRight,
-                            contentDescription = "Next month",
-                            tint = if (canGoNext) MaterialTheme.colorScheme.onSurface
-                                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                        )
+                        IconButton(onClick = onPrevMonth, modifier = Modifier.size(34.dp)) {
+                            Icon(
+                                Icons.Default.ChevronLeft,
+                                contentDescription = "Previous month",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = onNextMonth,
+                            modifier = Modifier.size(34.dp),
+                            enabled = canGoNext
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = "Next month",
+                                tint = if (canGoNext) MaterialTheme.colorScheme.onSurface
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun NotificationPermissionBanner(

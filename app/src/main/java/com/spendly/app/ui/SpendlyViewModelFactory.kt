@@ -23,15 +23,15 @@ class SpendlyViewModelFactory(
             modelClass.isAssignableFrom(MainViewModel::class.java) ->
                 MainViewModel(container.settingsRepository, container.expenseRepository) as T
             modelClass.isAssignableFrom(HomeViewModel::class.java) ->
-                HomeViewModel(container.expenseRepository) as T
+                HomeViewModel(container.expenseRepository, container.settingsRepository) as T
             modelClass.isAssignableFrom(TransactionsViewModel::class.java) ->
                 TransactionsViewModel(container.expenseRepository) as T
             modelClass.isAssignableFrom(NotesViewModel::class.java) ->
-                NotesViewModel(container.expenseRepository) as T
+                NotesViewModel(container.expenseRepository, container.settingsRepository) as T
             modelClass.isAssignableFrom(InsightsViewModel::class.java) ->
-                InsightsViewModel(container.expenseRepository) as T
+                InsightsViewModel(container.expenseRepository, container.settingsRepository) as T
             modelClass.isAssignableFrom(AddExpenseViewModel::class.java) ->
-                AddExpenseViewModel(container.expenseRepository) as T
+                AddExpenseViewModel(container.expenseRepository, container.settingsRepository) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
                 SettingsViewModel(
                     container.settingsRepository,

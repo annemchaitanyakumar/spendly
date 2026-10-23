@@ -18,14 +18,19 @@ data class HomeUiState(
     val pendingCandidates: List<TransactionCandidate> = emptyList(),
     val pendingCandidateCount: Int = 0,
     val cashFlowDays: List<DayCashFlow> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val aiCopilotTip: String? = null,
+    val isGeneratingCopilotTip: Boolean = false
 )
 
 class HomeViewModel(
-    private val repository: ExpenseRepository
+    private val repository: ExpenseRepository,
+    private val settingsRepository: com.spendly.app.core.settings.AppSettingsRepository
 ) : ViewModel() {
 
     private val _selectedMonth = MutableStateFlow(DateTimeUtils.currentYearMonth())
+    private val _aiCopilotTip = MutableStateFlow<String?>(null)
+    private val _isGeneratingCopilotTip = MutableStateFlow(false)
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -35,27 +40,34 @@ class HomeViewModel(
     }
 
     private fun observeData() {
-        _selectedMonth
-            .flatMapLatest { (year, month) ->
-                combine(
-                    repository.observeMonthSummary(year, month),
-                    repository.observeRecentExpenses(12),
-                    repository.observePendingCandidates(),
-                    repository.observeMonthlyCashFlow(year, month)
-                ) { summary, recent, candidates, cashFlow ->
-                    val (year2, month2) = _selectedMonth.value
-                    HomeUiState(
-                        isLoading = false,
-                        currentYear = year2,
-                        currentMonth = month2,
-                        monthSummary = summary,
-                        recentExpenses = recent,
-                        pendingCandidates = candidates,
-                        pendingCandidateCount = candidates.size,
-                        cashFlowDays = cashFlow
-                    )
-                }
+        combine(
+            _selectedMonth,
+            _aiCopilotTip,
+            _isGeneratingCopilotTip
+        ) { monthPair, tip, isGenerating ->
+            Triple(monthPair, tip, isGenerating)
+        }.flatMapLatest { (monthPair, tip, isGenerating) ->
+            val (year, month) = monthPair
+            combine(
+                repository.observeMonthSummary(year, month),
+                repository.observeRecentExpenses(12),
+                repository.observePendingCandidates(),
+                repository.observeMonthlyCashFlow(year, month)
+            ) { summary, recent, candidates, cashFlow ->
+                HomeUiState(
+                    isLoading = false,
+                    currentYear = year,
+                    currentMonth = month,
+                    monthSummary = summary,
+                    recentExpenses = recent,
+                    pendingCandidates = candidates,
+                    pendingCandidateCount = candidates.size,
+                    cashFlowDays = cashFlow,
+                    aiCopilotTip = tip,
+                    isGeneratingCopilotTip = isGenerating
+                )
             }
+        }
             .onStart {
                 val (y, m) = _selectedMonth.value
                 emit(HomeUiState(isLoading = true, currentYear = y, currentMonth = m))
@@ -136,5 +148,33 @@ class HomeViewModel(
         val (year, month) = _selectedMonth.value
         val (nowYear, nowMonth) = DateTimeUtils.currentYearMonth()
         return year < nowYear || (year == nowYear && month < nowMonth)
+    }
+
+    fun refreshAiCopilotTip() {
+        val summary = _state.value.monthSummary ?: return
+        viewModelScope.launch {
+            _isGeneratingCopilotTip.value = true
+            val settings = settingsRepository.settingsFlow.first()
+            val monthName = DateTimeUtils.formatMonthYear(_state.value.currentYear, _state.value.currentMonth)
+            val topCats = summary.categoryBreakdown
+                .sortedByDescending { it.totalMinor }
+                .take(3)
+                .joinToString(", ") { "${it.category?.name ?: "Other"}: ${com.spendly.app.core.common.CurrencyFormatter.formatMinor(it.totalMinor, "INR")}" }
+
+            val tip = com.spendly.app.core.ai.AiAdvisorAgent.generateMonthlyAnalysis(
+                apiKey = settings.geminiApiKey,
+                monthName = monthName,
+                totalSpendsFormatted = com.spendly.app.core.common.CurrencyFormatter.formatMinor(summary.totalMinor, "INR"),
+                totalIncomeFormatted = com.spendly.app.core.common.CurrencyFormatter.formatMinor(summary.totalCreditsMinor, "INR"),
+                netCashFlowFormatted = com.spendly.app.core.common.CurrencyFormatter.formatMinor(summary.netBalanceMinor, "INR"),
+                topCategoriesSummary = topCats
+            )
+            _aiCopilotTip.value = tip
+            _isGeneratingCopilotTip.value = false
+        }
+    }
+
+    fun dismissCopilotTip() {
+        _aiCopilotTip.value = null
     }
 }

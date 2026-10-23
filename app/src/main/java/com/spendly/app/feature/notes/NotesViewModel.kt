@@ -6,8 +6,10 @@ import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.Expense
 import com.spendly.app.core.repository.ExpenseRepository
+import com.spendly.app.core.settings.AppSettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.Month
 import java.time.format.DateTimeFormatter
@@ -46,26 +48,37 @@ data class NotesUiState(
     val totalSpendsCount: Int = 0,
     val dayGroups: List<DayNotesGroup> = emptyList(),
     val filteredDayGroups: List<DayNotesGroup> = emptyList(),
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val aiDigest: String? = null,
+    val isGeneratingAiDigest: Boolean = false
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotesViewModel(
-    private val repository: ExpenseRepository
+    private val repository: ExpenseRepository,
+    private val settingsRepository: AppSettingsRepository
 ) : ViewModel() {
 
     private val _selectedMonth = MutableStateFlow(DateTimeUtils.currentYearMonth())
     private val _searchQuery = MutableStateFlow("")
+    private val _aiDigest = MutableStateFlow<String?>(null)
+    private val _isGeneratingAiDigest = MutableStateFlow(false)
 
     val state: StateFlow<NotesUiState> = combine(
         _selectedMonth,
-        _searchQuery
-    ) { monthPair, query ->
-        Pair(monthPair, query)
-    }.flatMapLatest { (monthPair, query) ->
+        _searchQuery,
+        _aiDigest,
+        _isGeneratingAiDigest
+    ) { monthPair, query, digest, isGenerating ->
+        Triple(monthPair, query, Pair(digest, isGenerating))
+    }.flatMapLatest { (monthPair, query, aiPair) ->
         val (year, month) = monthPair
+        val (digest, isGenerating) = aiPair
         repository.observeMonthlyExpenses(year, month).map { expenses ->
-            buildUiState(year, month, query, expenses)
+            buildUiState(year, month, query, expenses).copy(
+                aiDigest = digest,
+                isGeneratingAiDigest = isGenerating
+            )
         }
     }.stateIn(
         scope = viewModelScope,
@@ -77,6 +90,31 @@ class NotesViewModel(
             isLoading = true
         )
     )
+
+    fun generateAiDigest() {
+        val currentState = state.value
+        val itemsText = currentState.filteredDayGroups.joinToString("\n") { group ->
+            "${group.dateHeading} (Total: ${group.dayTotalFormatted}):\n" +
+                    group.items.joinToString("\n") { "  • ${it.fullTextLine}" }
+        }
+        if (itemsText.isBlank()) return
+
+        viewModelScope.launch {
+            _isGeneratingAiDigest.value = true
+            val settings = settingsRepository.settingsFlow.first()
+            val summary = com.spendly.app.core.ai.AiAdvisorAgent.summarizeNotesDiary(
+                apiKey = settings.geminiApiKey,
+                monthTitle = currentState.monthHeading,
+                rawNotesText = itemsText
+            )
+            _aiDigest.value = summary
+            _isGeneratingAiDigest.value = false
+        }
+    }
+
+    fun dismissAiDigest() {
+        _aiDigest.value = null
+    }
 
     fun previousMonth() {
         val (year, month) = _selectedMonth.value

@@ -119,6 +119,40 @@ fun AddExpenseSheet(
                 }
             }
 
+            var naturalInput by remember { mutableStateOf("") }
+            var isAiParsing by remember { mutableStateOf(false) }
+
+            if (state.editingExpenseId == null) {
+                OutlinedTextField(
+                    value = naturalInput,
+                    onValueChange = { naturalInput = it },
+                    placeholder = { Text("✨ AI Quick-Fill (e.g. coffee 150 at CCD)", style = MaterialTheme.typography.bodySmall) },
+                    trailingIcon = {
+                        if (naturalInput.isNotBlank()) {
+                            IconButton(
+                                onClick = {
+                                    isAiParsing = true
+                                    viewModel.parseNaturalLanguage(naturalInput) {
+                                        isAiParsing = false
+                                        naturalInput = ""
+                                    }
+                                },
+                                enabled = !isAiParsing
+                            ) {
+                                if (isAiParsing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.AutoAwesome, "Apply AI", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             // Transaction Type Selector Pills
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -27,7 +27,8 @@ data class ExpenseFormUiState(
 )
 
 class AddExpenseViewModel(
-    private val repository: ExpenseRepository
+    private val repository: ExpenseRepository,
+    private val settingsRepository: com.spendly.app.core.settings.AppSettingsRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ExpenseFormUiState())
@@ -37,6 +38,30 @@ class AddExpenseViewModel(
         viewModelScope.launch {
             val cats = repository.getAllCategories()
             _state.update { it.copy(categories = cats) }
+        }
+    }
+
+    fun parseNaturalLanguage(input: String, onFinished: () -> Unit = {}) {
+        if (input.isBlank()) return
+        viewModelScope.launch {
+            val settings = settingsRepository.settingsFlow.first()
+            val parsed = com.spendly.app.core.ai.AiAdvisorAgent.parseNaturalExpense(
+                apiKey = settings.geminiApiKey,
+                input = input
+            )
+            val cats = _state.value.categories
+            val matchedCat = cats.find { it.name.equals(parsed.categoryName, ignoreCase = true) }
+                ?: cats.find { it.name.contains(parsed.categoryName, ignoreCase = true) }
+
+            _state.update {
+                it.copy(
+                    amountText = parsed.amountMinor?.let { a -> String.format(java.util.Locale.US, "%.2f", a / 100.0) } ?: it.amountText,
+                    merchant = parsed.merchant.ifBlank { it.merchant },
+                    categoryId = matchedCat?.id ?: it.categoryId,
+                    note = parsed.note.ifBlank { it.note }
+                )
+            }
+            onFinished()
         }
     }
 

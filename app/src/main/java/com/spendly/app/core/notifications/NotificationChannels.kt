@@ -6,6 +6,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.view.View
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import com.spendly.app.MainActivity
 import com.spendly.app.R
@@ -134,11 +136,42 @@ object ExpenseNotificationHelper {
             "$categoryName • Spendly"
         }
 
-        val bigTextBuilder = StringBuilder()
-        bigTextBuilder.append(title).append("\n")
-        bigTextBuilder.append("Category: ").append(categoryName)
-        if (!transactionRef.isNullOrBlank()) {
-            bigTextBuilder.append("\nRef: ").append(transactionRef)
+        val badgeText = when (label) {
+            "Transfer", "Self Transfer" -> "TRANSFER"
+            "Received", "Credited" -> "CREDIT"
+            "Refund" -> "REFUND"
+            else -> "PAID"
+        }
+
+        // Custom Collapsed RemoteViews
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notification_spendly_collapsed).apply {
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, contentText)
+            setTextViewText(R.id.notif_badge, badgeText)
+        }
+
+        // Custom Expanded RemoteViews
+        val expandedViews = RemoteViews(context.packageName, R.layout.notification_spendly_expanded).apply {
+            setTextViewText(R.id.notif_exp_badge, badgeText)
+            setTextViewText(R.id.notif_exp_amount, amountStr)
+            val merchantDisplay = if (hasRecipient) {
+                when (label) {
+                    "Transfer", "Self Transfer" -> "to $cleanRecipient"
+                    "Received", "Credited", "Refund" -> "from $cleanRecipient"
+                    else -> "to $cleanRecipient"
+                }
+            } else ""
+            setTextViewText(R.id.notif_exp_merchant, merchantDisplay)
+            setTextViewText(R.id.notif_exp_category, categoryName)
+            setTextViewText(R.id.notif_exp_source, sourceDisplayName)
+            if (!transactionRef.isNullOrBlank()) {
+                setTextViewText(R.id.notif_exp_ref, "Ref: $transactionRef")
+                setViewVisibility(R.id.notif_exp_ref, View.VISIBLE)
+            } else {
+                setViewVisibility(R.id.notif_exp_ref, View.GONE)
+            }
+            setOnClickPendingIntent(R.id.notif_btn_edit, openPending)
+            setOnClickPendingIntent(R.id.notif_btn_undo, undoPending)
         }
 
         val largeIconBitmap = try {
@@ -154,9 +187,13 @@ object ExpenseNotificationHelper {
                     setLargeIcon(largeIconBitmap)
                 }
             }
+            .setColor(0xFF10B981.toInt())
+            .setColorized(true)
             .setContentTitle(title)
             .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bigTextBuilder.toString()))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setContentIntent(openPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -226,6 +263,25 @@ object ExpenseNotificationHelper {
         val contentTitle = if (hasMerchant) "$amountStr paid to $cleanMerchant" else "$amountStr payment detected"
         val contentText = "Tap to confirm • Spendly"
 
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notification_spendly_collapsed).apply {
+            setTextViewText(R.id.notif_title, contentTitle)
+            setTextViewText(R.id.notif_subtitle, "Tap to review or confirm • Spendly")
+            setTextViewText(R.id.notif_badge, "REVIEW")
+        }
+
+        val expandedViews = RemoteViews(context.packageName, R.layout.notification_spendly_expanded).apply {
+            setTextViewText(R.id.notif_exp_badge, "REVIEW")
+            setTextViewText(R.id.notif_exp_amount, amountStr)
+            setTextViewText(R.id.notif_exp_merchant, if (hasMerchant) "at $cleanMerchant" else "")
+            setTextViewText(R.id.notif_exp_category, "Unconfirmed")
+            setTextViewText(R.id.notif_exp_source, sourceDisplayName)
+            setViewVisibility(R.id.notif_exp_ref, View.GONE)
+            setTextViewText(R.id.notif_btn_edit, "Confirm")
+            setTextViewText(R.id.notif_btn_undo, "Dismiss")
+            setOnClickPendingIntent(R.id.notif_btn_edit, openPending)
+            setOnClickPendingIntent(R.id.notif_btn_undo, dismissPending)
+        }
+
         val largeIconBitmap = try {
             BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
         } catch (_: Exception) {
@@ -239,8 +295,13 @@ object ExpenseNotificationHelper {
                     setLargeIcon(largeIconBitmap)
                 }
             }
+            .setColor(0xFF10B981.toInt())
+            .setColorized(true)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setContentIntent(openPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

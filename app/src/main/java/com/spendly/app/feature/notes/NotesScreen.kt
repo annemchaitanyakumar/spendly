@@ -79,8 +79,56 @@ fun NotesScreen(
                     val text = viewModel.generatePlainTextNotes()
                     sharePlainText(context, "${state.monthHeading} Summary", text)
                 },
-                onAddSpend = onAddExpense
+                onAddSpend = onAddExpense,
+                onGenerateAiDigest = viewModel::generateAiDigest,
+                isGeneratingAi = state.isGeneratingAiDigest
             )
+        }
+
+        // ── 1.5. AI Spends Digest Card ────────────────────────────────
+        if (state.aiDigest != null || state.isGeneratingAiDigest) {
+            item(key = "ai_digest_card") {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Text("AI Journal Digest", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            IconButton(onClick = viewModel::dismissAiDigest, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, "Dismiss", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (state.isGeneratingAiDigest) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Text("Analyzing daily spends with AI...", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            Text(
+                                state.aiDigest.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // ── 2. Search & Filter Bar ─────────────────────────────────────
@@ -160,7 +208,9 @@ private fun NotesHeaderCard(
     onNextMonth: () -> Unit,
     onCopyNotes: () -> Unit,
     onShareNotes: () -> Unit,
-    onAddSpend: () -> Unit
+    onAddSpend: () -> Unit,
+    onGenerateAiDigest: () -> Unit,
+    isGeneratingAi: Boolean
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -283,6 +333,24 @@ private fun NotesHeaderCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
+                }
+            }
+
+            // Row 2.5: AI Spends Summary Button
+            FilledTonalButton(
+                onClick = onGenerateAiDigest,
+                enabled = !isGeneratingAi && totalCount > 0,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isGeneratingAi) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Analyzing Spends Journal with AI...")
+                } else {
+                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Generate AI Spends Summary", fontWeight = FontWeight.Bold)
                 }
             }
 
