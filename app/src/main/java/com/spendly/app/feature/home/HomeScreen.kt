@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -140,12 +141,25 @@ fun HomeScreen(
             ) {
                 HomeViewTab.values().forEach { tab ->
                     val selected = tab == selectedTab
+                    val tabBgColor by animateColorAsState(
+                        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        animationSpec = tween(180),
+                        label = "tab_bg"
+                    )
+                    val tabContentColor by animateColorAsState(
+                        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(180),
+                        label = "tab_content"
+                    )
                     Surface(
                         onClick = { selectedTab = tab },
-                        modifier = Modifier.weight(1f).height(40.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .bouncingClickable(scaleDown = 0.94f) { selectedTab = tab },
                         shape = RoundedCornerShape(10.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null
+                        color = tabBgColor,
+                        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
                     ) {
                         Row(
                             modifier = Modifier.fillMaxSize(),
@@ -156,14 +170,14 @@ fun HomeScreen(
                                 tab.icon,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
-                                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = tabContentColor
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 tab.label,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = tabContentColor
                             )
                         }
                     }
@@ -392,21 +406,39 @@ private fun GreetingHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = DateTimeUtils.formatMonthYear(year, month),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            AnimatedContent(
+                targetState = DateTimeUtils.formatMonthYear(year, month),
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(220)) + slideInVertically { it / 3 })
+                        .togetherWith(fadeOut(animationSpec = tween(150)) + slideOutVertically { -it / 3 })
+                },
+                label = "home_month_title"
+            ) { monthTitle ->
+                Text(
+                    text = monthTitle,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val aiPulseAlpha by rememberPulsingAlpha()
                 FilledTonalButton(
                     onClick = onRefreshAiCopilot,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.height(34.dp)
+                    modifier = Modifier
+                        .height(34.dp)
+                        .bouncingClickable(scaleDown = 0.92f, onClick = onRefreshAiCopilot)
                 ) {
-                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        null,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer { alpha = aiPulseAlpha }
+                    )
                     Spacer(Modifier.width(4.dp))
                     Text("AI Copilot", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
@@ -421,7 +453,12 @@ private fun GreetingHeader(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        IconButton(onClick = onPrevMonth, modifier = Modifier.size(34.dp)) {
+                        IconButton(
+                            onClick = onPrevMonth,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .bouncingClickable(scaleDown = 0.88f, onClick = onPrevMonth)
+                        ) {
                             Icon(
                                 Icons.Default.ChevronLeft,
                                 contentDescription = "Previous month",
@@ -430,7 +467,9 @@ private fun GreetingHeader(
                         }
                         IconButton(
                             onClick = onNextMonth,
-                            modifier = Modifier.size(34.dp),
+                            modifier = Modifier
+                                .size(34.dp)
+                                .bouncingClickable(enabled = canGoNext, scaleDown = 0.88f, onClick = onNextMonth),
                             enabled = canGoNext
                         ) {
                             Icon(

@@ -41,13 +41,20 @@ fun ExpenseListItem(
     val badgeBg = MaterialTheme.colorScheme.surfaceContainerHigh
     val badgeText = MaterialTheme.colorScheme.onSurface
 
+    val cardModifier = if (onClick != null) {
+        modifier
+            .fillMaxWidth()
+            .bouncingClickable(scaleDown = 0.97f) { onClick.invoke(expense) }
+    } else {
+        modifier.fillMaxWidth()
+    }
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = cardModifier,
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        tonalElevation = 0.dp,
-        onClick = { onClick?.invoke(expense) }
+        tonalElevation = 0.dp
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

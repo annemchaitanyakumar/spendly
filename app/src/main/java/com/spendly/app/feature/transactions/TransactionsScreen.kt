@@ -1,6 +1,7 @@
 package com.spendly.app.feature.transactions
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -18,6 +19,8 @@ import com.spendly.app.core.common.CurrencyFormatter
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.Expense
 import com.spendly.app.ui.components.ExpenseListItem
+import com.spendly.app.ui.components.bounceOnPress
+import com.spendly.app.ui.components.bouncingClickable
 import com.spendly.app.ui.spendlyViewModel
 import kotlinx.coroutines.launch
 
@@ -64,10 +67,16 @@ fun TransactionsScreen(
         TopAppBar(
             title = { Text("Expenses", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
             actions = {
-                IconButton(onClick = { showFilters = !showFilters }) {
+                IconButton(
+                    onClick = { showFilters = !showFilters },
+                    modifier = Modifier.bounceOnPress()
+                ) {
                     Icon(Icons.Outlined.FilterList, "Filter")
                 }
-                IconButton(onClick = onAddExpense) {
+                IconButton(
+                    onClick = onAddExpense,
+                    modifier = Modifier.bounceOnPress()
+                ) {
                     Icon(Icons.Default.Add, "Add expense")
                 }
             },
@@ -108,58 +117,70 @@ fun TransactionsScreen(
         }
 
         // ── Transaction list ─────────────────────────────────────────
-        if (state.isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (state.groupedExpenses.isEmpty()) {
-            EmptyTransactionState(onAdd = onAddExpense)
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                state.groupedExpenses.forEach { (dateLabel, expenses) ->
-                    val dailyTotal = state.dailyTotals[dateLabel] ?: 0L
+        AnimatedContent(
+            targetState = state.isLoading to state.groupedExpenses.isEmpty(),
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+            },
+            label = "transactions_content_anim",
+            modifier = Modifier.weight(1f)
+        ) { (isLoading, isEmpty) ->
+            if (isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (isEmpty) {
+                EmptyTransactionState(onAdd = onAddExpense)
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    state.groupedExpenses.forEach { (dateLabel, expenses) ->
+                        val dailyTotal = state.dailyTotals[dateLabel] ?: 0L
 
-                    stickyHeader(key = "header_$dateLabel") {
-                        Surface(color = MaterialTheme.colorScheme.surface) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    dateLabel,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (dailyTotal > 0L) {
+                        stickyHeader(key = "header_$dateLabel") {
+                            Surface(color = MaterialTheme.colorScheme.surface) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Text(
-                                        CurrencyFormatter.formatMinor(dailyTotal),
-                                        style = MaterialTheme.typography.labelMedium,
+                                        dateLabel,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    if (dailyTotal > 0L) {
+                                        Text(
+                                            CurrencyFormatter.formatMinor(dailyTotal),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    items(
-                        items = expenses,
-                        key = { "exp_${it.id}" }
-                    ) { expense ->
-                        ExpenseListItem(
-                            expense = expense,
-                            onClick = { editingExpense = it },
-                            onDelete = { viewModel.deleteExpense(it) }
-                        )
+                        items(
+                            items = expenses,
+                            key = { "exp_${it.id}" }
+                        ) { expense ->
+                            Box(modifier = Modifier.animateItem()) {
+                                ExpenseListItem(
+                                    expense = expense,
+                                    onClick = { editingExpense = it },
+                                    onDelete = { viewModel.deleteExpense(it) }
+                                )
+                            }
+                        }
                     }
+                    item { Spacer(Modifier.height(80.dp)) }
                 }
-                item { Spacer(Modifier.height(80.dp)) }
             }
         }
     }
@@ -194,7 +215,8 @@ private fun FilterRow(
                 onMonthChange(prev.first, prev.second)
             },
             label = { Text(DateTimeUtils.formatMonthYear(filter.year, filter.month)) },
-            leadingIcon = { Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp)) }
+            leadingIcon = { Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp)) },
+            modifier = Modifier.bounceOnPress()
         )
 
         // Category filter
@@ -207,7 +229,8 @@ private fun FilterRow(
                 },
                 trailingIcon = {
                     Icon(Icons.Default.Close, "Clear", Modifier.size(16.dp))
-                }
+                },
+                modifier = Modifier.bounceOnPress()
             )
         }
     }
@@ -235,7 +258,10 @@ private fun EmptyTransactionState(onAdd: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onAdd) {
+        OutlinedButton(
+            onClick = onAdd,
+            modifier = Modifier.bounceOnPress()
+        ) {
             Text("Add Expense")
         }
     }

@@ -1,6 +1,8 @@
 package com.spendly.app.feature.expenseform
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -29,6 +31,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.common.DateTimeUtils
 import com.spendly.app.core.model.Category
 import com.spendly.app.core.model.RecordType
+import com.spendly.app.ui.components.bounceOnPress
+import com.spendly.app.ui.components.bouncingClickable
+import com.spendly.app.ui.components.rememberPulsingAlpha
 import com.spendly.app.ui.spendlyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -121,6 +126,7 @@ fun AddExpenseSheet(
 
             var naturalInput by remember { mutableStateOf("") }
             var isAiParsing by remember { mutableStateOf(false) }
+            val aiPulseAlpha by rememberPulsingAlpha(minAlpha = 0.55f, maxAlpha = 1.0f)
 
             if (state.editingExpenseId == null) {
                 OutlinedTextField(
@@ -137,12 +143,17 @@ fun AddExpenseSheet(
                                         naturalInput = ""
                                     }
                                 },
-                                enabled = !isAiParsing
+                                enabled = !isAiParsing,
+                                modifier = Modifier.bounceOnPress()
                             ) {
                                 if (isAiParsing) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Icon(Icons.Default.AutoAwesome, "Apply AI", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        "Apply AI",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = aiPulseAlpha)
+                                    )
                                 }
                             }
                         }
@@ -226,7 +237,8 @@ fun AddExpenseSheet(
                         SuggestionChip(
                             onClick = { viewModel.setMerchant(suggestion) },
                             label = { Text(suggestion) },
-                            shape = CircleShape
+                            shape = CircleShape,
+                            modifier = Modifier.bounceOnPress()
                         )
                     }
                 }
@@ -290,7 +302,8 @@ fun AddExpenseSheet(
                 onClick = { viewModel.save(onSuccess = onSaved) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(52.dp)
+                    .bounceOnPress(),
                 enabled = !state.isSaving && !state.isDeleting,
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -315,7 +328,8 @@ fun AddExpenseSheet(
                 onClick = onDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    .bounceOnPress(),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text("Cancel")
@@ -333,22 +347,37 @@ private fun TypeFilterChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "type_chip_bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "type_chip_border"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "type_chip_text"
+    )
+
     Surface(
         onClick = onClick,
-        modifier = modifier.height(40.dp),
+        modifier = modifier
+            .height(40.dp)
+            .bounceOnPress(scaleDown = 0.94f),
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        border = BorderStroke(
-            1.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-        )
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                color = textColor
             )
         }
     }
@@ -359,6 +388,7 @@ private fun CategoryChip(category: Category, selected: Boolean, onClick: () -> U
     FilterChip(
         selected = selected,
         onClick = onClick,
+        modifier = Modifier.bounceOnPress(scaleDown = 0.92f),
         label = { 
             Text(
                 "${com.spendly.app.ui.components.categoryIconEmoji(category.icon)} ${category.name}", 

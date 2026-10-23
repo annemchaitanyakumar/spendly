@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,8 +22,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.spendly.app.ui.components.bouncingClickable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spendly.app.core.settings.ThemeMode
 import android.app.ActivityManager
@@ -202,12 +205,32 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
         floatingActionButton = {},
         contentWindowInsets = WindowInsets.safeDrawing
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             AnimatedContent(
                 targetState = currentDest,
                 transitionSpec = {
-                    (fadeIn(animationSpec = tween(200)) + slideInHorizontally { 30 })
-                        .togetherWith(fadeOut(animationSpec = tween(150)))
+                    val targetIdx = bottomNavItems.indexOf(targetState).let { if (it >= 0) it else 99 }
+                    val initialIdx = bottomNavItems.indexOf(initialState).let { if (it >= 0) it else 99 }
+                    val direction = if (targetIdx >= initialIdx) 1 else -1
+
+                    (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
+                        slideInHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialOffsetX = { direction * (it / 5) }
+                        )).togetherWith(
+                        fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing)) +
+                            slideOutHorizontally(
+                                animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                targetOffsetX = { -direction * (it / 8) }
+                            )
+                    )
                 },
                 label = "nav_anim"
             ) { dest ->
@@ -289,9 +312,11 @@ fun SpendlyBottomBar(
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.primary,
-                            shadowElevation = 4.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                            modifier = Modifier.size(48.dp)
+                            shadowElevation = 0.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .bouncingClickable(scaleDown = 0.90f, onClick = onAddClick)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -307,13 +332,23 @@ fun SpendlyBottomBar(
                     alwaysShowLabel = false
                 )
             }
+            val isSelected = current == dest
+            val iconScale by animateFloatAsState(
+                targetValue = if (isSelected) 1.18f else 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                label = "tab_icon_scale"
+            )
             NavigationBarItem(
-                selected = current == dest,
+                selected = isSelected,
                 onClick = { onSelect(dest) },
                 icon = {
                     Icon(
                         imageVector = dest.icon,
-                        contentDescription = dest.label
+                        contentDescription = dest.label,
+                        modifier = Modifier.scale(iconScale)
                     )
                 },
                 label = { Text(dest.label, style = MaterialTheme.typography.labelSmall) }

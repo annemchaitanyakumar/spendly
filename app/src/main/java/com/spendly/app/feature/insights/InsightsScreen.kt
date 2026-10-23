@@ -1,6 +1,10 @@
 package com.spendly.app.feature.insights
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import com.spendly.app.ui.components.bounceOnPress
+import com.spendly.app.ui.components.bouncingClickable
+import com.spendly.app.ui.components.rememberPulsingAlpha
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -99,7 +103,9 @@ private fun InsightsContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = viewModel::previousMonth,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bounceOnPress()
                     ) {
                         Icon(
                             Icons.Default.ChevronLeft,
@@ -107,16 +113,26 @@ private fun InsightsContent(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    Text(
-                        text = DateTimeUtils.formatMonthYear(state.currentYear, state.currentMonth),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
+                    AnimatedContent(
+                        targetState = DateTimeUtils.formatMonthYear(state.currentYear, state.currentMonth),
+                        transitionSpec = {
+                            fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+                        },
+                        label = "insights_month_anim"
+                    ) { monthLabel ->
+                        Text(
+                            text = monthLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
                     IconButton(
                         onClick = viewModel::nextMonth,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bounceOnPress()
                     ) {
                         Icon(
                             Icons.Default.ChevronRight,
@@ -148,6 +164,7 @@ private fun InsightsContent(
         }
 
         // ── AI Financial Advisor Card ──────────────────────────────────
+        val aiPulseAlpha by rememberPulsingAlpha(minAlpha = 0.5f, maxAlpha = 1.0f)
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -172,7 +189,7 @@ private fun InsightsContent(
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = aiPulseAlpha),
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
@@ -186,6 +203,7 @@ private fun InsightsContent(
                         onClick = { viewModel.generateAiAnalysis() },
                         enabled = !state.isAnalyzing,
                         shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.bounceOnPress(),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.primary
@@ -293,11 +311,13 @@ private fun DailyBarChart(dailyTotals: List<DailySpending>) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
-    val animProgress by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label = "bar_anim"
-    )
+    val animProgress = remember(dailyTotals) { Animatable(0f) }
+    LaunchedEffect(dailyTotals) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(750, easing = FastOutSlowInEasing)
+        )
+    }
 
     Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
         val barWidth = size.width / (dailyTotals.size.coerceAtLeast(1) * 1.5f)
@@ -306,7 +326,7 @@ private fun DailyBarChart(dailyTotals: List<DailySpending>) {
 
         dailyTotals.forEachIndexed { index, daily ->
             val x = index * (barWidth + spacing) + spacing / 2
-            val barFraction = (daily.totalMinor.toFloat() / maxTotal) * animProgress
+            val barFraction = (daily.totalMinor.toFloat() / maxTotal) * animProgress.value
             val barHeight = barFraction * maxBarHeight
             val y = size.height - barHeight
 
@@ -349,11 +369,13 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
         }
     }
 
-    val animProgress by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label = "donut_anim"
-    )
+    val animProgress = remember(categories, total) { Animatable(0f) }
+    LaunchedEffect(categories, total) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(800, easing = FastOutSlowInEasing)
+        )
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -368,7 +390,7 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
 
             categories.forEachIndexed { index, spending ->
                 val fraction = spending.totalMinor.toFloat() / total
-                val sweepAngle = fraction * 360f * animProgress
+                val sweepAngle = fraction * 360f * animProgress.value
                 drawArc(
                     color = colors.getOrElse(index) { WarmWhiteMuted },
                     startAngle = startAngle,

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,7 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import com.spendly.app.ui.components.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,11 +122,24 @@ fun NotesScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val aiPulseAlpha by rememberPulsingAlpha()
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .graphicsLayer { alpha = aiPulseAlpha }
+                                )
                                 Text("AI Journal Digest", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
-                            IconButton(onClick = viewModel::dismissAiDigest, modifier = Modifier.size(24.dp)) {
+                            IconButton(
+                                onClick = viewModel::dismissAiDigest,
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .bouncingClickable(scaleDown = 0.85f, onClick = viewModel::dismissAiDigest)
+                            ) {
                                 Icon(Icons.Default.Close, "Dismiss", modifier = Modifier.size(16.dp))
                             }
                         }
@@ -200,10 +216,12 @@ fun NotesScreen(
             items = displayedGroups,
             key = { it.dateLocalDate.toString() }
         ) { dayGroup ->
-            DayNotesSection(
-                group = dayGroup,
-                onItemClick = { item -> onEditExpense(item.id) }
-            )
+            Box(modifier = Modifier.animateItem()) {
+                DayNotesSection(
+                    group = dayGroup,
+                    onItemClick = { item -> onEditExpense(item.id) }
+                )
+            }
         }
     }
 
@@ -284,14 +302,23 @@ private fun NotesHeaderCard(
                     }
 
                     Column {
-                        Text(
-                            text = monthHeading,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = (-0.5).sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        AnimatedContent(
+                            targetState = monthHeading,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(220)) + slideInVertically { it / 3 })
+                                    .togetherWith(fadeOut(animationSpec = tween(150)) + slideOutVertically { -it / 3 })
+                            },
+                            label = "notes_month_anim"
+                        ) { heading ->
+                            Text(
+                                text = heading,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = (-0.5).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                         Text(
                             text = "Daily financial journal",
                             style = MaterialTheme.typography.bodySmall,
@@ -307,7 +334,9 @@ private fun NotesHeaderCard(
                 ) {
                     IconButton(
                         onClick = onPrevMonth,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bouncingClickable(scaleDown = 0.88f, onClick = onPrevMonth)
                     ) {
                         Icon(
                             Icons.Default.ChevronLeft,
@@ -318,7 +347,9 @@ private fun NotesHeaderCard(
                     IconButton(
                         onClick = onNextMonth,
                         enabled = canGoNext,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bouncingClickable(enabled = canGoNext, scaleDown = 0.88f, onClick = onNextMonth)
                     ) {
                         Icon(
                             Icons.Default.ChevronRight,
@@ -374,14 +405,23 @@ private fun NotesHeaderCard(
                 onClick = onGenerateAiDigest,
                 enabled = !isGeneratingAi && totalCount > 0,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bouncingClickable(enabled = !isGeneratingAi && totalCount > 0, scaleDown = 0.96f, onClick = onGenerateAiDigest)
             ) {
                 if (isGeneratingAi) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                     Text("Analyzing Spends Journal with AI...")
                 } else {
-                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
+                    val aiPulseAlpha by rememberPulsingAlpha()
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer { alpha = aiPulseAlpha }
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text("Generate AI Spends Summary", fontWeight = FontWeight.Bold)
                 }
@@ -392,7 +432,9 @@ private fun NotesHeaderCard(
                 onClick = onImportNotes,
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bouncingClickable(scaleDown = 0.96f, onClick = onImportNotes)
             ) {
                 Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
@@ -409,7 +451,9 @@ private fun NotesHeaderCard(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .bouncingClickable(scaleDown = 0.94f, onClick = onCopyNotes)
                 ) {
                     Icon(
                         Icons.Default.ContentCopy,
@@ -430,7 +474,9 @@ private fun NotesHeaderCard(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .bouncingClickable(scaleDown = 0.94f, onClick = onShareNotes)
                 ) {
                     Icon(
                         Icons.Default.Share,
@@ -451,7 +497,9 @@ private fun NotesHeaderCard(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .bouncingClickable(scaleDown = 0.94f, onClick = onAddSpend)
                 ) {
                     Icon(
                         Icons.Default.Add,

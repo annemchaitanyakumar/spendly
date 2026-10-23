@@ -1,6 +1,7 @@
 package com.spendly.app.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -87,7 +89,9 @@ fun SpendCalendarView(
                 ) {
                     IconButton(
                         onClick = onPrevMonth,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bouncingClickable(scaleDown = 0.88f, onClick = onPrevMonth)
                     ) {
                         Icon(
                             Icons.Default.ChevronLeft,
@@ -106,19 +110,30 @@ fun SpendCalendarView(
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
-                        Text(
-                            text = DateTimeUtils.formatMonthYear(year, month).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        AnimatedContent(
+                            targetState = DateTimeUtils.formatMonthYear(year, month).uppercase(),
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(220)) + slideInVertically { it / 3 })
+                                    .togetherWith(fadeOut(animationSpec = tween(150)) + slideOutVertically { -it / 3 })
+                            },
+                            label = "cal_month_title"
+                        ) { monthTitle ->
+                            Text(
+                                text = monthTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
 
                     IconButton(
                         onClick = onNextMonth,
                         enabled = canGoNext,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .bouncingClickable(enabled = canGoNext, scaleDown = 0.88f, onClick = onNextMonth)
                     ) {
                         Icon(
                             Icons.Default.ChevronRight,
@@ -128,7 +143,7 @@ fun SpendCalendarView(
                     }
                 }
 
-                // Monochromatic Financial Flow Strip
+                // Monochromatic Financial Flow Strip with smooth value counting
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -194,38 +209,52 @@ fun SpendCalendarView(
                     }
                 }
 
-                // Month Grid
-                val totalCells = leadingEmptyDays + daysInMonth
-                val totalRows = (totalCells + 6) / 7
+                // Month Grid with smooth month change animation
+                AnimatedContent(
+                    targetState = ym,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(220)) + slideInHorizontally { 60 })
+                            .togetherWith(fadeOut(animationSpec = tween(150)) + slideOutHorizontally { -60 })
+                    },
+                    label = "cal_grid_anim"
+                ) { currentYm ->
+                    val currentDaysInMonth = currentYm.lengthOfMonth()
+                    val currentFirstDay = currentYm.atDay(1).dayOfWeek.value
+                    val currentLeadingEmpty = currentFirstDay - 1
+                    val totalCells = currentLeadingEmpty + currentDaysInMonth
+                    val totalRows = (totalCells + 6) / 7
 
-                for (rowIndex in 0 until totalRows) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        for (colIndex in 0 until 7) {
-                            val cellIndex = rowIndex * 7 + colIndex
-                            val dayNumber = cellIndex - leadingEmptyDays + 1
+                    Column {
+                        for (rowIndex in 0 until totalRows) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp),
+                                horizontalArrangement = Arrangement.SpaceAround
+                            ) {
+                                for (colIndex in 0 until 7) {
+                                    val cellIndex = rowIndex * 7 + colIndex
+                                    val dayNumber = cellIndex - currentLeadingEmpty + 1
 
-                            if (dayNumber in 1..daysInMonth) {
-                                val cellDate = ym.atDay(dayNumber)
-                                val isSelected = cellDate == selectedDate
-                                val isToday = cellDate == today
-                                val flow = dayFlowMap[dayNumber]
+                                    if (dayNumber in 1..currentDaysInMonth) {
+                                        val cellDate = currentYm.atDay(dayNumber)
+                                        val isSelected = cellDate == selectedDate
+                                        val isToday = cellDate == today
+                                        val flow = dayFlowMap[dayNumber]
 
-                                CalendarDayCell(
-                                    dayNumber = dayNumber,
-                                    isSelected = isSelected,
-                                    isToday = isToday,
-                                    debitMinor = flow?.debitMinor ?: 0L,
-                                    creditMinor = flow?.creditMinor ?: 0L,
-                                    onClick = { selectedDate = cellDate },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            } else {
-                                Box(modifier = Modifier.weight(1f).height(54.dp))
+                                        CalendarDayCell(
+                                            dayNumber = dayNumber,
+                                            isSelected = isSelected,
+                                            isToday = isToday,
+                                            debitMinor = flow?.debitMinor ?: 0L,
+                                            creditMinor = flow?.creditMinor ?: 0L,
+                                            onClick = { selectedDate = cellDate },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    } else {
+                                        Box(modifier = Modifier.weight(1f).height(54.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -241,68 +270,78 @@ fun SpendCalendarView(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 0.dp
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            AnimatedContent(
+                targetState = selectedDate,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(200)) + slideInVertically { 20 })
+                        .togetherWith(fadeOut(animationSpec = tween(120)) + slideOutVertically { -20 })
+                },
+                label = "day_txns_anim"
+            ) { date ->
+                val dayFlow = dayFlowMap[date.dayOfMonth]
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = selectedDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        val deb = selectedDayFlow?.debitMinor ?: 0L
-                        val cred = selectedDayFlow?.creditMinor ?: 0L
-                        Text(
-                            text = "Debited: ${CurrencyFormatter.formatMinor(deb)}  •  Credited: ${CurrencyFormatter.formatMinor(cred)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    val count = selectedDayFlow?.transactions?.size ?: 0
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "$count ${if (count == 1) "txn" else "txns"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                val txns = selectedDayFlow?.transactions ?: emptyList()
-                if (txns.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "No transactions on this date",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        txns.forEach { expense ->
-                            ExpenseListItem(
-                                expense = expense,
-                                onClick = onEditExpense
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
+                            val deb = dayFlow?.debitMinor ?: 0L
+                            val cred = dayFlow?.creditMinor ?: 0L
+                            Text(
+                                text = "Debited: ${CurrencyFormatter.formatMinor(deb)}  •  Credited: ${CurrencyFormatter.formatMinor(cred)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val count = dayFlow?.transactions?.size ?: 0
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = "$count ${if (count == 1) "txn" else "txns"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    val txns = dayFlow?.transactions ?: emptyList()
+                    if (txns.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No transactions on this date",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            txns.forEach { expense ->
+                                ExpenseListItem(
+                                    expense = expense,
+                                    onClick = onEditExpense
+                                )
+                            }
                         }
                     }
                 }
@@ -329,14 +368,23 @@ private fun FlowMetricItem(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             letterSpacing = 0.5.sp
         )
-        Text(
-            text = amountText,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        AnimatedContent(
+            targetState = amountText,
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(200)) + slideInVertically { it / 4 })
+                    .togetherWith(fadeOut(animationSpec = tween(120)))
+            },
+            label = "flow_amount_anim"
+        ) { text ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -350,15 +398,21 @@ private fun CalendarDayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary // Warm White pill
+    val targetBg = when {
+        isSelected -> MaterialTheme.colorScheme.primary
         isToday -> MaterialTheme.colorScheme.surfaceContainerHigh
         else -> Color.Transparent
     }
 
+    val animatedBg by animateColorAsState(
+        targetValue = targetBg,
+        animationSpec = tween(180),
+        label = "cell_bg_anim"
+    )
+
     val contentColor = when {
-        isSelected -> MaterialTheme.colorScheme.onPrimary // OLED pitch black
-        else -> MaterialTheme.colorScheme.onSurface // Warm White
+        isSelected -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     val borderColor = when {
@@ -367,13 +421,24 @@ private fun CalendarDayCell(
         else -> Color.Transparent
     }
 
+    val selectionScale by animateFloatAsState(
+        targetValue = if (isSelected) 1.05f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "day_scale"
+    )
+
     Surface(
         onClick = onClick,
         modifier = modifier
             .height(54.dp)
-            .padding(2.dp),
+            .padding(2.dp)
+            .scale(selectionScale)
+            .bouncingClickable(scaleDown = 0.94f, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        color = bgColor,
+        color = animatedBg,
         border = BorderStroke(1.dp, borderColor)
     ) {
         Column(
