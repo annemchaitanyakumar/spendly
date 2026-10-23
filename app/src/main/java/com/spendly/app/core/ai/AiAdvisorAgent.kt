@@ -209,4 +209,97 @@ object AiAdvisorAgent {
 
         return "Notes Digest for $monthTitle:\n${rawNotesText.take(200)}...\n\nKeep tracking your daily spends regularly for deeper insights."
     }
+
+    /**
+     * Parses free-form text from external notes apps into structured note groups.
+     */
+    suspend fun parseNotesWithAi(apiKey: String, rawNotesText: String): List<com.spendly.app.core.parser.ParsedNoteGroup> {
+        val cleanKey = apiKey.trim().trim('"', '\'')
+        if (cleanKey.isBlank() || rawNotesText.isBlank()) {
+            return com.spendly.app.core.parser.NotesImportParser.parseNotesText(rawNotesText)
+        }
+
+        val prompt = """
+            You are Spendly's Intelligent Notes Parser.
+            Extract all spending/expense entries from the following raw notes into a JSON array:
+            [
+              {
+                "title": "Date or Note Title (e.g. 01 Oct 2026)",
+                "date": "YYYY-MM-DD",
+                "items": [
+                  {
+                    "merchant": "Item or Merchant name (e.g. Vegetables)",
+                    "amount": 100.0,
+                    "category": "Groceries"
+                  }
+                ]
+              }
+            ]
+            
+            Valid categories: "Food & Dining", "Groceries", "Transport", "Shopping", "Bills & Utilities", "Entertainment", "Health & Medical", "Education", "Travel & Trips", "Fuel & Vehicle", "Rent & Housing", "Other".
+            
+            Raw Notes:
+            $rawNotesText
+            
+            Output ONLY valid JSON array.
+        """.trimIndent()
+
+        val response = callGemini(cleanKey, prompt, temperature = 0.1)
+        if (!response.isNullOrBlank()) {
+            try {
+                val cleanJson = response.substringAfter("[").substringBeforeLast("]")
+                val arr = JSONArray("[$cleanJson]")
+                val groups = mutableListOf<com.spendly.app.core.parser.ParsedNoteGroup>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val title = obj.optString("title", "Notes Group ${i + 1}")
+                    val dateStr = obj.optString("date", "")
+                    val date = try {
+                        java.time.LocalDate.parse(dateStr)
+                    } catch (_: Exception) {
+                        java.time.LocalDate.now()
+                    }
+                    val epoch = date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    val itemsArr = obj.optJSONArray("items") ?: JSONArray()
+                    val items = mutableListOf<com.spendly.app.core.parser.ParsedNoteItem>()
+                    for (j in 0 until itemsArr.length()) {
+                        val itemObj = itemsArr.getJSONObject(j)
+                        val merchant = itemObj.optString("merchant", "Expense")
+                        val amountMajor = itemObj.optDouble("amount", 0.0)
+                        val catName = itemObj.optString("category", "Other")
+                        val (catId, finalCatName) = com.spendly.app.core.parser.NotesImportParser.detectCategory(merchant)
+                        val amountMinor = (amountMajor * 100).toLong()
+                        if (amountMinor > 0L) {
+                            items.add(
+                                com.spendly.app.core.parser.ParsedNoteItem(
+                                    merchant = merchant,
+                                    amountMinor = amountMinor,
+                                    amountFormatted = com.spendly.app.core.common.CurrencyFormatter.formatMinor(amountMinor),
+                                    suggestedCategoryId = catId,
+                                    suggestedCategoryName = if (catName != "Other") catName else finalCatName,
+                                    rawText = "$merchant $amountMajor"
+                                )
+                            )
+                        }
+                    }
+                    if (items.isNotEmpty()) {
+                        groups.add(
+                            com.spendly.app.core.parser.ParsedNoteGroup(
+                                title = title,
+                                dateEpochMillis = epoch,
+                                dateFormatted = com.spendly.app.core.common.DateTimeUtils.formatDate(epoch),
+                                items = items,
+                                isSelected = true
+                            )
+                        )
+                    }
+                }
+                if (groups.isNotEmpty()) return groups
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse AI notes json: ${e.message}")
+            }
+        }
+
+        return com.spendly.app.core.parser.NotesImportParser.parseNotesText(rawNotesText)
+    }
 }

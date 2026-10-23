@@ -74,6 +74,35 @@ class ExpenseRepository(
         expenseDao.deleteById(id)
     }
 
+    suspend fun saveImportedNotes(
+        notes: List<com.spendly.app.core.parser.ParsedNoteGroup>
+    ): Int = withContext(Dispatchers.IO) {
+        var count = 0
+        for (group in notes) {
+            if (!group.isSelected) continue
+            for (item in group.items) {
+                if (!item.isSelected) continue
+                val expense = Expense(
+                    amountMinor = item.amountMinor,
+                    currencyCode = "INR",
+                    direction = TransactionDirection.DEBIT,
+                    recordType = RecordType.EXPENSE,
+                    merchant = item.merchant,
+                    categoryId = item.suggestedCategoryId,
+                    transactionAt = group.dateEpochMillis,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis(),
+                    sourcePackage = "com.spendly.notes.import",
+                    note = "Imported: ${group.title}",
+                    confirmationStatus = ConfirmationStatus.CONFIRMED
+                )
+                saveExpense(expense)
+                count++
+            }
+        }
+        count
+    }
+
     suspend fun getExpenseById(id: Long): Expense? = withContext(Dispatchers.IO) {
         val entity = expenseDao.getById(id) ?: return@withContext null
         val category = entity.categoryId?.let { categoryDao.getById(it) }

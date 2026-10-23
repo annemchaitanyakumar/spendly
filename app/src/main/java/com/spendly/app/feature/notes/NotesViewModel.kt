@@ -50,7 +50,10 @@ data class NotesUiState(
     val filteredDayGroups: List<DayNotesGroup> = emptyList(),
     val isLoading: Boolean = false,
     val aiDigest: String? = null,
-    val isGeneratingAiDigest: Boolean = false
+    val isGeneratingAiDigest: Boolean = false,
+    val importNotesList: List<com.spendly.app.core.parser.ParsedNoteGroup> = emptyList(),
+    val isParsingImport: Boolean = false,
+    val showImportSheet: Boolean = false
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -64,20 +67,40 @@ class NotesViewModel(
     private val _aiDigest = MutableStateFlow<String?>(null)
     private val _isGeneratingAiDigest = MutableStateFlow(false)
 
+    private val _importNotesList = MutableStateFlow<List<com.spendly.app.core.parser.ParsedNoteGroup>>(emptyList())
+    private val _isParsingImport = MutableStateFlow(false)
+    private val _showImportSheet = MutableStateFlow(false)
+
+    private val _importState = combine(
+        _importNotesList,
+        _isParsingImport,
+        _showImportSheet
+    ) { list, isParsing, showSheet ->
+        Triple(list, isParsing, showSheet)
+    }
+
     val state: StateFlow<NotesUiState> = combine(
         _selectedMonth,
         _searchQuery,
         _aiDigest,
-        _isGeneratingAiDigest
-    ) { monthPair, query, digest, isGenerating ->
-        Triple(monthPair, query, Pair(digest, isGenerating))
-    }.flatMapLatest { (monthPair, query, aiPair) ->
-        val (year, month) = monthPair
-        val (digest, isGenerating) = aiPair
+        _isGeneratingAiDigest,
+        _importState
+    ) { monthPair, query, digest, isGenerating, (importList, isParsing, showSheet) ->
+        Tuple5(monthPair, query, Pair(digest, isGenerating), importList, Pair(isParsing, showSheet))
+    }.flatMapLatest { tuple ->
+        val (year, month) = tuple.first
+        val query = tuple.second
+        val (digest, isGenerating) = tuple.third
+        val importList = tuple.fourth
+        val (isParsing, showSheet) = tuple.fifth
+
         repository.observeMonthlyExpenses(year, month).map { expenses ->
             buildUiState(year, month, query, expenses).copy(
                 aiDigest = digest,
-                isGeneratingAiDigest = isGenerating
+                isGeneratingAiDigest = isGenerating,
+                importNotesList = importList,
+                isParsingImport = isParsing,
+                showImportSheet = showSheet
             )
         }
     }.stateIn(
@@ -89,6 +112,14 @@ class NotesViewModel(
             monthHeading = formatMonthHeading(DateTimeUtils.currentYearMonth().first, DateTimeUtils.currentYearMonth().second),
             isLoading = true
         )
+    )
+
+    private data class Tuple5<A, B, C, D, E>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D,
+        val fifth: E
     )
 
     fun generateAiDigest() {
@@ -326,6 +357,97 @@ class NotesViewModel(
             lower.contains("messaging") || lower.contains("mms") -> "SMS"
             lower.contains("gm") || lower.contains("mail") -> "Gmail"
             else -> "Bank/App"
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Notes App Import Actions (User Chooses Which Notes to Import)
+    // ─────────────────────────────────────────────────────────────────
+
+    fun openImportDialogWithText(rawText: String) {
+        if (rawText.isBlank()) {
+            _importNotesList.value = emptyList()
+            _showImportSheet.value = true
+            return
+        }
+        viewModelScope.launch {
+            _isParsingImport.value = true
+            _showImportSheet.value = true
+            val settings = settingsRepository.settingsFlow.first()
+            val parsed = if (settings.aiAgentEnabled && settings.geminiApiKey.isNotBlank()) {
+                com.spendly.app.core.ai.AiAdvisorAgent.parseNotesWithAi(settings.geminiApiKey, rawText)
+            } else {
+                com.spendly.app.core.parser.NotesImportParser.parseNotesText(rawText)
+            }
+            _importNotesList.value = parsed
+            _isParsingImport.value = false
+        }
+    }
+
+    fun parseImportContent(rawText: String) {
+        openImportDialogWithText(rawText)
+    }
+
+    fun showImportSheet() {
+        _showImportSheet.value = true
+    }
+
+    fun dismissImportSheet() {
+        _showImportSheet.value = false
+        _importNotesList.value = emptyList()
+    }
+
+    fun toggleNoteGroupSelection(groupId: String) {
+        _importNotesList.update { list ->
+            list.map { group ->
+                if (group.id == groupId) {
+                    val nextSelected = !group.isSelected
+                    group.copy(
+                        isSelected = nextSelected,
+                        items = group.items.map { it.copy(isSelected = nextSelected) }
+                    )
+                } else group
+            }
+        }
+    }
+
+    fun toggleNoteItemSelection(groupId: String, itemId: String) {
+        _importNotesList.update { list ->
+            list.map { group ->
+                if (group.id == groupId) {
+                    val updatedItems = group.items.map { item ->
+                        if (item.id == itemId) item.copy(isSelected = !item.isSelected) else item
+                    }
+                    val anySelected = updatedItems.any { it.isSelected }
+                    group.copy(
+                        items = updatedItems,
+                        isSelected = anySelected
+                    )
+                } else group
+            }
+        }
+    }
+
+    fun selectAllImportNotes(selectAll: Boolean) {
+        _importNotesList.update { list ->
+            list.map { group ->
+                group.copy(
+                    isSelected = selectAll,
+                    items = group.items.map { it.copy(isSelected = selectAll) }
+                )
+            }
+        }
+    }
+
+    fun importSelectedNotes(onSuccess: (count: Int, totalMinor: Long) -> Unit) {
+        val groupsToImport = _importNotesList.value
+        viewModelScope.launch {
+            val totalMinor = groupsToImport.filter { it.isSelected }
+                .sumOf { it.items.filter { i -> i.isSelected }.sumOf { i -> i.amountMinor } }
+            val count = repository.saveImportedNotes(groupsToImport)
+            _showImportSheet.value = false
+            _importNotesList.value = emptyList()
+            onSuccess(count, totalMinor)
         }
     }
 }

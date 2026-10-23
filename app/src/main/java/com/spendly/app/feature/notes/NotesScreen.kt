@@ -40,11 +40,20 @@ fun NotesScreen(
     onAddExpense: () -> Unit = {},
     onEditExpense: (Long) -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
+    initialImportText: String? = null,
+    onClearInitialImportText: () -> Unit = {},
     viewModel: NotesViewModel = spendlyViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(initialImportText) {
+        if (!initialImportText.isNullOrBlank()) {
+            viewModel.openImportDialogWithText(initialImportText)
+            onClearInitialImportText()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -80,6 +89,7 @@ fun NotesScreen(
                     sharePlainText(context, "${state.monthHeading} Summary", text)
                 },
                 onAddSpend = onAddExpense,
+                onImportNotes = viewModel::showImportSheet,
                 onGenerateAiDigest = viewModel::generateAiDigest,
                 isGeneratingAi = state.isGeneratingAiDigest
             )
@@ -192,6 +202,24 @@ fun NotesScreen(
             )
         }
     }
+
+    if (state.showImportSheet) {
+        ImportNotesSheet(
+            state = state,
+            onDismiss = viewModel::dismissImportSheet,
+            onParseText = viewModel::parseImportContent,
+            onToggleGroup = viewModel::toggleNoteGroupSelection,
+            onToggleItem = viewModel::toggleNoteItemSelection,
+            onSelectAll = viewModel::selectAllImportNotes,
+            onConfirmImport = viewModel::importSelectedNotes,
+            onImportSuccess = { count, totalMinor ->
+                scope.launch {
+                    val msg = "🎉 Successfully imported $count notes (${CurrencyFormatter.formatMinor(totalMinor)})!"
+                    snackbarHostState?.showSnackbar(msg) ?: Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -209,6 +237,7 @@ private fun NotesHeaderCard(
     onCopyNotes: () -> Unit,
     onShareNotes: () -> Unit,
     onAddSpend: () -> Unit,
+    onImportNotes: () -> Unit,
     onGenerateAiDigest: () -> Unit,
     isGeneratingAi: Boolean
 ) {
@@ -352,6 +381,18 @@ private fun NotesHeaderCard(
                     Spacer(Modifier.width(6.dp))
                     Text("Generate AI Spends Summary", fontWeight = FontWeight.Bold)
                 }
+            }
+
+            // Row 2.7: Import Notes from Mobile App Button
+            OutlinedButton(
+                onClick = onImportNotes,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("Import Notes from Mobile App", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
 
             // Row 3: Action Buttons (Copy, Share, Add)

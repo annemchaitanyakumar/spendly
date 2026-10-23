@@ -110,17 +110,65 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
     var currentDest by remember { mutableStateOf<NavDest>(NavDest.Home) }
     var showAddExpense by remember { mutableStateOf(false) }
     var expenseIdToEdit by remember { mutableStateOf<Long?>(null) }
+    var notesSharedTextToImport by remember { mutableStateOf<String?>(null) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as? ComponentActivity
 
     LaunchedEffect(activity?.intent) {
-        val intent = activity?.intent
-        if (intent != null && intent.action == com.spendly.app.core.notifications.ExpenseNotificationHelper.ACTION_OPEN_EXPENSE) {
-            val expId = intent.getLongExtra(com.spendly.app.core.notifications.ExpenseNotificationHelper.EXTRA_EXPENSE_ID, -1L)
-            if (expId > 0L) {
-                expenseIdToEdit = expId
-                showAddExpense = true
+        val intent = activity?.intent ?: return@LaunchedEffect
+        when (intent.action) {
+            com.spendly.app.core.notifications.ExpenseNotificationHelper.ACTION_OPEN_EXPENSE -> {
+                val expId = intent.getLongExtra(com.spendly.app.core.notifications.ExpenseNotificationHelper.EXTRA_EXPENSE_ID, -1L)
+                if (expId > 0L) {
+                    expenseIdToEdit = expId
+                    showAddExpense = true
+                }
+            }
+            Intent.ACTION_SEND -> {
+                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!sharedText.isNullOrBlank()) {
+                    currentDest = NavDest.Notes
+                    notesSharedTextToImport = sharedText
+                } else {
+                    val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                    }
+                    if (streamUri != null) {
+                        try {
+                            context.contentResolver.openInputStream(streamUri)?.bufferedReader()?.use {
+                                val text = it.readText()
+                                if (text.isNotBlank()) {
+                                    currentDest = NavDest.Notes
+                                    notesSharedTextToImport = text
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val streamUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+                }
+                val sb = StringBuilder()
+                streamUris?.forEach { uri ->
+                    try {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use {
+                            sb.append(it.readText()).append("\n\n")
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (sb.isNotBlank()) {
+                    currentDest = NavDest.Notes
+                    notesSharedTextToImport = sb.toString()
+                }
             }
         }
     }
@@ -182,7 +230,9 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                             expenseIdToEdit = id
                             showAddExpense = true
                         },
-                        snackbarHostState = snackbarHostState
+                        snackbarHostState = snackbarHostState,
+                        initialImportText = notesSharedTextToImport,
+                        onClearInitialImportText = { notesSharedTextToImport = null }
                     )
                     NavDest.Transactions -> TransactionsScreen(
                         contentPadding = padding,
