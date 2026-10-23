@@ -17,7 +17,9 @@ data class AppSettings(
     val defaultCategoryId: Long? = null,
     val isOnboardingComplete: Boolean = false,
     val notificationCooldownSeconds: Int = 30,
-    val confidenceThreshold: Float = 0.4f
+    val confidenceThreshold: Float = 0.4f,
+    val aiAgentEnabled: Boolean = false,
+    val geminiApiKey: String = ""
 )
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
@@ -36,6 +38,8 @@ class AppSettingsRepository(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val NOTIFICATION_COOLDOWN = intPreferencesKey("notification_cooldown")
         val CONFIDENCE_THRESHOLD = floatPreferencesKey("confidence_threshold")
+        val AI_AGENT_ENABLED = booleanPreferencesKey("ai_agent_enabled")
+        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
     }
 
     val settingsFlow: Flow<AppSettings> = store.data.map { prefs ->
@@ -50,7 +54,9 @@ class AppSettingsRepository(
             defaultCategoryId = prefs[Keys.DEFAULT_CATEGORY_ID],
             isOnboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             notificationCooldownSeconds = prefs[Keys.NOTIFICATION_COOLDOWN] ?: 30,
-            confidenceThreshold = prefs[Keys.CONFIDENCE_THRESHOLD] ?: 0.4f
+            confidenceThreshold = prefs[Keys.CONFIDENCE_THRESHOLD] ?: 0.4f,
+            aiAgentEnabled = prefs[Keys.AI_AGENT_ENABLED] ?: false,
+            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: ""
         )
     }
 
@@ -63,4 +69,6 @@ class AppSettingsRepository(
     suspend fun setOnboardingComplete(done: Boolean) = store.edit { it[Keys.ONBOARDING_COMPLETE] = done }
     suspend fun setNotificationCooldown(seconds: Int) = store.edit { it[Keys.NOTIFICATION_COOLDOWN] = seconds }
     suspend fun setConfidenceThreshold(threshold: Float) = store.edit { it[Keys.CONFIDENCE_THRESHOLD] = threshold }
+    suspend fun setAiAgentEnabled(enabled: Boolean) = store.edit { it[Keys.AI_AGENT_ENABLED] = enabled }
+    suspend fun setGeminiApiKey(key: String) = store.edit { it[Keys.GEMINI_API_KEY] = key }
 }

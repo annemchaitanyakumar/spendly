@@ -268,6 +268,9 @@ class EmailParser : NotificationParser {
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
         if (CommonPatterns.isNonExpenseMessage(fullText)) return null
 
+        // Strictly verify that this email is from an authentic bank or verified order invoice
+        if (!CommonPatterns.isVerifiedFinancialEmail(title, text, bigText)) return null
+
         val amount = CommonPatterns.extractAmount(fullText) ?: return null
         val direction = CommonPatterns.detectDirection(fullText)
         // Email must strictly have verified debit or credit

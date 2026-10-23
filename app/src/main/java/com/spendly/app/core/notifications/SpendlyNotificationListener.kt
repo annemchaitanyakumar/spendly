@@ -11,6 +11,7 @@ import com.spendly.app.core.parser.SupportedPackages
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +36,7 @@ class SpendlyNotificationListener : NotificationListenerService() {
     }
     private val parserRegistry get() = container.parserRegistry
     private val repository get() = container.expenseRepository
+    private val settingsRepository get() = container.settingsRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -107,6 +109,23 @@ class SpendlyNotificationListener : NotificationListenerService() {
         if (parsed.amountMinor == null || parsed.amountMinor <= 0L) return
         if (parsed.direction == TransactionDirection.UNKNOWN) return
         if (parsed.recordType == RecordType.UNKNOWN || parsed.recordType == RecordType.FAILED) return
+
+        // Optional AI Agent Verification (Gemini Free Tier)
+        try {
+            val settings = settingsRepository.settingsFlow.first()
+            if (settings.aiAgentEnabled && settings.geminiApiKey.isNotBlank()) {
+                val aiResult = com.spendly.app.core.ai.AiTransactionAgent.verifyTransaction(
+                    apiKey = settings.geminiApiKey,
+                    text = fullText
+                )
+                if (!aiResult.isTransaction) {
+                    Log.d(TAG, "AI Agent rejected notification as non-transaction: ${aiResult.reason}")
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "AI Agent check failed; falling back to local engine: ${e.message}")
+        }
 
         val contentFingerprint = "${parsed.amountMinor}_${parsed.transactionRef ?: ""}"
         if (contentFingerprint.isNotBlank() && isRecentlyProcessed(contentFingerprint)) {
@@ -211,13 +230,16 @@ class SpendlyNotificationListener : NotificationListenerService() {
                     rawMerchant.equals("Paytm", ignoreCase = true) ||
                     rawMerchant.equals("GPay", ignoreCase = true) ||
                     rawMerchant.equals("Android", ignoreCase = true) ||
-                    rawMerchant.equals("System", ignoreCase = true)
+                    rawMerchant.equals("System", ignoreCase = true) ||
+                    rawMerchant.equals("any time", ignoreCase = true) ||
+                    rawMerchant.equals("all times", ignoreCase = true) ||
+                    rawMerchant.equals("anytime", ignoreCase = true)
 
             val cleanMerchant = if (isCarrierOrSystem) "" else rawMerchant
 
             val isSelf = !isCredit && (
-                    fullText.lowercase().contains("self") ||
-                    cleanMerchant.lowercase().contains("self") ||
+                    CommonPatterns.matchesWord(fullText, "self") ||
+                    CommonPatterns.matchesWord(cleanMerchant, "self") ||
                     cleanMerchant.contains("Annem", ignoreCase = true) ||
                     cleanMerchant.contains("Chaitanya", ignoreCase = true)
             )
@@ -225,16 +247,16 @@ class SpendlyNotificationListener : NotificationListenerService() {
             val isTransfer = !isCredit && (
                     isSelf ||
                     parsed.recordType == RecordType.TRANSFER ||
-                    CommonPatterns.TRANSFER_KEYWORDS.any { fullText.lowercase().contains(it) } ||
+                    CommonPatterns.TRANSFER_KEYWORDS.any { CommonPatterns.matchesWord(fullText, it) } ||
                     CommonPatterns.isLikelyPersonPayee(cleanMerchant) ||
                     (cleanMerchant.isBlank() && (
                         SupportedPackages.isSms(pkg) ||
                         SupportedPackages.isUpi(pkg) ||
-                        fullText.contains("upi", ignoreCase = true) ||
-                        fullText.contains("vpa", ignoreCase = true) ||
-                        fullText.contains("p2p", ignoreCase = true) ||
-                        fullText.contains("sent", ignoreCase = true) ||
-                        fullText.contains("transfer", ignoreCase = true)
+                        CommonPatterns.matchesWord(fullText, "upi") ||
+                        CommonPatterns.matchesWord(fullText, "vpa") ||
+                        CommonPatterns.matchesWord(fullText, "p2p") ||
+                        CommonPatterns.matchesWord(fullText, "sent") ||
+                        CommonPatterns.matchesWord(fullText, "transfer")
                     ))
             )
 

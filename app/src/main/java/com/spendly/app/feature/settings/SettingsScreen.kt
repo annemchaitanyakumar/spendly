@@ -236,6 +236,102 @@ fun SettingsScreen(
             }
         }
 
+        // ── Free AI Smart Agent (Gemini Free Tier) ────────────────────
+        item(key = "ai_agent_card") {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                shape = MaterialTheme.shapes.large
+            ) {
+                var apiKeyInput by remember(state.settings.geminiApiKey) { mutableStateOf(state.settings.geminiApiKey) }
+                var aiTestResult by remember { mutableStateOf<String?>(null) }
+                var isTestingAi by remember { mutableStateOf(false) }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("AI Smart Agent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Powered by Google Gemini (Free Tier)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Switch(
+                            checked = state.settings.aiAgentEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setAiAgentEnabled(enabled)
+                            }
+                        )
+                    }
+
+                    Text(
+                        "Enables semantic AI analysis to reject false positives like Amazon suggested replacement prices, promotional newsletters, and cancellation notices. 100% free with no credit card required from Google AI Studio.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (state.settings.aiAgentEnabled) {
+                        OutlinedTextField(
+                            value = apiKeyInput,
+                            onValueChange = {
+                                apiKeyInput = it
+                                viewModel.setGeminiApiKey(it)
+                            },
+                            label = { Text("Google AI Studio API Key (Free)") },
+                            placeholder = { Text("AIzaSy...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://aistudio.google.com/app/apikey"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Get Free Key")
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    isTestingAi = true
+                                    viewModel.testAiAgent(
+                                        "Amazon.in: Subscription Cancelled. Suggested Replacements: Tugain Essentials Anti Dandruff Shampoo... ₹376.20 Choose as replacement."
+                                    ) { res ->
+                                        isTestingAi = false
+                                        aiTestResult = res
+                                    }
+                                },
+                                enabled = !isTestingAi && apiKeyInput.isNotBlank()
+                            ) {
+                                Text(if (isTestingAi) "Testing..." else "Test AI Filter")
+                            }
+                        }
+
+                        if (!aiTestResult.isNullOrBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    aiTestResult!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Location Preferences ──────────────────────────────────────
         item(key = "location_pref") {
             Card(

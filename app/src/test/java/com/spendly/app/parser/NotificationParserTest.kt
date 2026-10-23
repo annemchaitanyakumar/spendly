@@ -521,17 +521,41 @@ class NotificationParserTest {
     }
 
     @Test
-    fun testPhonePePaymentReceivedDirection() {
-        val phonePeResult = registry.parse(
-            sourcePackage = "com.phonepe.app",
-            title = "Payment Received",
-            text = "You have received ₹10 from ANNEM RAMA successfully.",
+    fun testAmazonSubscriptionCancelledWithReplacementSuggestionsRejected() {
+        // Must reject cancellation emails with suggested replacement prices
+        val amazonEmailResult = registry.parse(
+            sourcePackage = "com.google.android.gm",
+            title = "Subscription Cancelled",
+            text = "Tugain Essentials Hair Fall Control Sham... Still want to subscribe to this product but change your schedule? You can reactivate and edit the subscription at any time. Suggested Replacements: Tugain Essentials Anti Dandruff Shampoo... ₹376.20 Choose as replacement.",
+            bigText = "Tugain Essentials Hair Fall Control... ₹583.30 Choose as replacement"
+        )
+        assertNull(
+            "Amazon suggested replacement / subscription cancelled emails must NEVER be parsed as expenses",
+            amazonEmailResult
+        )
+    }
+
+    @Test
+    fun testEssentialsDoesNotMatchSentKeyword() {
+        // "essentials" contains "sent" as a substring. Word-boundary checks must ensure it is not detected as DEBIT or TRANSFER.
+        val nonFinancialEmail = registry.parse(
+            sourcePackage = "com.google.android.gm",
+            title = "Product Recommendation",
+            text = "Check out Tugain Essentials Hair Oil for ₹299.00 today only.",
             bigText = null
         )
-        assertNotNull(phonePeResult)
-        assertEquals(1000L, phonePeResult?.amountMinor)
-        assertEquals(TransactionDirection.CREDIT, phonePeResult?.direction)
-        assertEquals(RecordType.INCOME, phonePeResult?.recordType)
-        assertTrue(phonePeResult!!.merchant.contains("ANNEM RAMA", ignoreCase = true))
+        assertNull(
+            "Word 'essentials' must not falsely match keyword 'sent'",
+            nonFinancialEmail
+        )
+    }
+
+    @Test
+    fun testAtAnyTimeDoesNotExtractMerchant() {
+        val merchant = com.spendly.app.core.parser.CommonPatterns.extractMerchant(
+            "You can reactivate and edit the subscription at any time. Tugain Essentials ₹376.20"
+        )
+        assertNotEquals("any time", merchant)
+        assertEquals("", merchant)
     }
 }

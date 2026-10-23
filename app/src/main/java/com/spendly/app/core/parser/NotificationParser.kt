@@ -219,27 +219,146 @@ internal object CommonPatterns {
         "balance enquiry", "acct bal"
     )
 
+    // Cancellations (subscription cancelled, order cancelled, etc.)
+    val CANCELLATION_KEYWORDS = listOf(
+        "subscription cancelled", "subscription canceled", "cancelled subscription",
+        "canceled subscription", "order cancelled", "order canceled", "cancelled your order",
+        "booking cancelled", "ticket cancelled", "reservation cancelled",
+        "cancellation confirmed", "cancelled successfully", "autopay cancelled",
+        "auto-pay cancelled", "mandate cancelled", "mandate revoked"
+    )
+
+    // Suggested replacements, catalog recommendations, subscribe & save
+    val REPLACEMENT_RECOMMENDATION_KEYWORDS = listOf(
+        "suggested replacement", "suggested replacements", "choose as replacement",
+        "recommended for you", "suggested for you", "recommendations for you",
+        "reactivate subscription", "reactivate your subscription", "reactivate and edit",
+        "reactivate", "subscribe & save", "subscribe and save",
+        "customers who bought", "similar items", "top picks for you", "explore similar",
+        "buy again", "items you might like", "more items like this"
+    )
+
+    // Cart & abandoned shopping reminders
+    val CART_REMINDER_KEYWORDS = listOf(
+        "items in your cart", "cart reminder", "your cart is waiting",
+        "saved for later", "abandoned cart", "still interested in",
+        "left in your cart", "continue shopping", "added to your cart"
+    )
+
+    // Delivery status notifications without actual payment
+    val DELIVERY_STATUS_KEYWORDS = listOf(
+        "out for delivery", "package delivered", "order delivered",
+        "arriving today", "arriving tomorrow", "shipped with", "in transit",
+        "package has been delivered", "shipment update"
+    )
+
+    // Feedback & review requests
+    val FEEDBACK_KEYWORDS = listOf(
+        "rate your purchase", "how was your delivery", "share your feedback",
+        "write a review", "rate your order"
+    )
+
+    /**
+     * Strict word-boundary matching so words like 'sent' don't match 'essentials' or 'consent'.
+     */
+    fun matchesWord(text: String, word: String): Boolean {
+        if (!text.contains(word, ignoreCase = true)) return false
+        val pattern = Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE)
+        return pattern.containsMatchIn(text)
+    }
+
+    /**
+     * Find word index using strict word boundaries.
+     */
+    fun findWordPosition(text: String, word: String): Int {
+        if (!text.contains(word, ignoreCase = true)) return -1
+        val pattern = Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE)
+        return pattern.find(text)?.range?.first ?: -1
+    }
+
     fun isNonExpenseMessage(text: String): Boolean {
         val lower = text.lowercase()
         // 1. Any OTP or verification message must NEVER be parsed as an expense transaction
         if (OTP_KEYWORDS.any { it in lower }) return true
 
-        // 2. UPI collect requests or money requests are NOT completed expenses
+        // 2. Cancellations (unless accompanied by an explicit refund keyword)
+        if (CANCELLATION_KEYWORDS.any { lower.contains(it) } && !REFUND_KEYWORDS.any { lower.contains(it) }) return true
+
+        // 3. Replacement suggestions & product catalog recommendations
+        if (REPLACEMENT_RECOMMENDATION_KEYWORDS.any { lower.contains(it) }) return true
+
+        // 4. Cart reminders
+        if (CART_REMINDER_KEYWORDS.any { lower.contains(it) }) return true
+
+        // 5. Delivery status updates without an explicit payment debit
+        if (DELIVERY_STATUS_KEYWORDS.any { lower.contains(it) } && !CONFIRMED_PAST_DEBIT_KEYWORDS.any { lower.contains(it) }) return true
+
+        // 6. Feedback / rating requests
+        if (FEEDBACK_KEYWORDS.any { lower.contains(it) }) return true
+
+        // 7. UPI collect requests or money requests are NOT completed expenses
         if (PAYMENT_REQUEST_KEYWORDS.any { it in lower }) return true
 
-        // 3. Bill due notices, telecom/broadband bills, invoice reminders
+        // 8. Bill due notices, telecom/broadband bills, invoice reminders
         if (BILL_DUE_REMINDER_KEYWORDS.any { it in lower }) {
             val isConfirmedDebit = CONFIRMED_PAST_DEBIT_KEYWORDS.any { lower.contains(it) }
             if (!isConfirmedDebit) return true
         }
 
-        // 4. Promotional and spam messages with financial terms but no actual debit
+        // 9. Promotional and spam messages with financial terms but no actual debit
         if (PROMO_KEYWORDS.any { it in lower } && !CONFIRMED_PAST_DEBIT_KEYWORDS.any { lower.contains(it) }) return true
 
-        // 5. Balance inquiry messages with no debit or credit action
+        // 10. Balance inquiry messages with no debit or credit action
         if (BALANCE_ENQUIRY_KEYWORDS.any { it in lower } &&
-            !DEBIT_KEYWORDS.any { lower.contains(it) } &&
-            !CREDIT_KEYWORDS.any { lower.contains(it) }) return true
+            !DEBIT_KEYWORDS.any { matchesWord(lower, it) } &&
+            !CREDIT_KEYWORDS.any { matchesWord(lower, it) }) return true
+
+        return false
+    }
+
+    // Official Bank & Financial institutions
+    private val KNOWN_FINANCIAL_INSTITUTIONS = listOf(
+        "hdfc", "sbi", "icici", "axis", "kotak", "indusind", "standard chartered",
+        "amex", "american express", "citi", "citibank", "pnb", "punjab national",
+        "bob", "bank of baroda", "canara", "union bank", "federal bank", "idfc",
+        "jupiter", "fi money", "rbl", "yes bank", "hsbc", "dbs", "cred",
+        "phonepe", "paytm", "google pay", "gpay", "bhim", "amazon pay", "paypal"
+    )
+
+    private val ACCOUNT_OR_CARD_MARKERS = listOf(
+        "a/c", "acct", "account", "card ending", "ending in", "ending with",
+        "xx", "vpa", "rrn", "utr", "ref no", "ref. no", "reference number", "txn id"
+    )
+
+    private val VERIFIED_INVOICE_PHRASES = listOf(
+        "tax invoice", "invoice for order", "order confirmed", "your order has been placed",
+        "payment received for order", "receipt for order", "payment confirmation for order"
+    )
+
+    /**
+     * Strictly verifies whether an email notification is an authentic financial transaction.
+     */
+    fun isVerifiedFinancialEmail(title: String, text: String, bigText: String?): Boolean {
+        val full = listOfNotNull(title, text, bigText).joinToString(" ").lowercase()
+
+        // 1. Must not match any non-expense / promo / replacement / cancellation marker
+        if (isNonExpenseMessage(full)) return false
+
+        // 2. Legitimate bank alert email check:
+        val hasBank = KNOWN_FINANCIAL_INSTITUTIONS.any { full.contains(it) }
+        val hasAccountMarker = ACCOUNT_OR_CARD_MARKERS.any { full.contains(it) }
+        val hasDebitCreditAction = CONFIRMED_PAST_DEBIT_KEYWORDS.any { full.contains(it) } ||
+                CREDIT_KEYWORDS.any { matchesWord(full, it) }
+
+        if (hasBank && hasAccountMarker && hasDebitCreditAction) {
+            return true
+        }
+
+        // 3. Legitimate merchant order confirmation / tax invoice check:
+        val hasVerifiedInvoice = VERIFIED_INVOICE_PHRASES.any { full.contains(it) }
+        if (hasVerifiedInvoice) {
+            return true
+        }
 
         return false
     }
@@ -287,12 +406,12 @@ internal object CommonPatterns {
 
         // Find earliest occurrence of strong indicators
         val firstStrongCredit = strongCreditPhrases
-            .map { sanitized.indexOf(it) }
+            .map { findWordPosition(sanitized, it) }
             .filter { it >= 0 }
             .minOrNull()
 
         val firstStrongDebit = strongDebitPhrases
-            .map { sanitized.indexOf(it) }
+            .map { findWordPosition(sanitized, it) }
             .filter { it >= 0 }
             .minOrNull()
 
@@ -302,14 +421,14 @@ internal object CommonPatterns {
         if (firstStrongCredit != null) return TransactionDirection.CREDIT
         if (firstStrongDebit != null) return TransactionDirection.DEBIT
 
-        // Fallback to keyword sets with position checking
+        // Fallback to keyword sets with strict word-boundary position checking
         val firstDebit = DEBIT_KEYWORDS
-            .map { sanitized.indexOf(it) }
+            .map { findWordPosition(sanitized, it) }
             .filter { it >= 0 }
             .minOrNull()
 
         val firstCredit = CREDIT_KEYWORDS
-            .map { sanitized.indexOf(it) }
+            .map { findWordPosition(sanitized, it) }
             .filter { it >= 0 }
             .minOrNull()
 
@@ -359,12 +478,12 @@ internal object CommonPatterns {
     fun detectRecordType(text: String, direction: TransactionDirection, merchant: String = ""): RecordType {
         val lower = text.lowercase()
         return when {
-            FAILURE_KEYWORDS.any { it in lower } -> RecordType.FAILED
-            REFUND_KEYWORDS.any { it in lower } && direction == TransactionDirection.CREDIT -> RecordType.REFUND
-            PENDING_KEYWORDS.any { it in lower } -> RecordType.PENDING
+            FAILURE_KEYWORDS.any { matchesWord(lower, it) } -> RecordType.FAILED
+            REFUND_KEYWORDS.any { matchesWord(lower, it) } && direction == TransactionDirection.CREDIT -> RecordType.REFUND
+            PENDING_KEYWORDS.any { matchesWord(lower, it) } -> RecordType.PENDING
             direction == TransactionDirection.CREDIT -> RecordType.INCOME
             isLikelyPersonPayee(merchant) -> RecordType.TRANSFER
-            TRANSFER_KEYWORDS.any { it in lower } -> RecordType.TRANSFER
+            TRANSFER_KEYWORDS.any { matchesWord(lower, it) } -> RecordType.TRANSFER
             direction == TransactionDirection.DEBIT -> RecordType.EXPENSE
             else -> RecordType.UNKNOWN
         }
@@ -404,9 +523,9 @@ internal object CommonPatterns {
         RegexOption.IGNORE_CASE
     )
 
-    // Pattern 5: at <Merchant> (e.g. at Starbucks, at Reliance)
+    // Pattern 5: at <Merchant> (requires explicit spending verb)
     private val AT_PATTERN = Regex(
-        """\b(?:at|paid\s+at|spent\s+at)\s+([A-Za-z][A-Za-z0-9 &.'-]{1,30}?)""" +
+        """\b(?:paid\s+at|spent\s+at|swiped\s+at|shopped\s+at|purchase\s+at|purchase\s+from)\s+([A-Za-z][A-Za-z0-9 &.'-]{1,30}?)""" +
         """(?:\s+(?:on|via|ref|upi|using|from|for|avl)\b|[\.,;]|\s*$)""",
         RegexOption.IGNORE_CASE
     )
@@ -420,7 +539,10 @@ internal object CommonPatterns {
         "view the", "below e-mail", "e-mailer", "mailer", "email", "view",
         "account transfer", "alert", "notice", "update", "kotak811",
         "messages", "message", "bank sms", "samsung messages", "gmail",
-        "outlook", "yahoo mail"
+        "outlook", "yahoo mail", "any time", "all times", "anytime",
+        "this time", "your convenience", "reactivate", "subscription",
+        "replacement", "replacements", "choose as", "schedule", "product",
+        "products", "item", "items", "money transfer", "transfer", "expense", "general"
     )
 
     fun sanitizeMerchantName(name: String): String {

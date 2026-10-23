@@ -93,12 +93,42 @@ fun ExpenseListItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val displayTitle = when {
+                        expense.recordType == RecordType.TRANSFER -> {
+                            val m = expense.merchant.trim()
+                            val isGeneric = m.isBlank() ||
+                                    m.equals("Transfer", ignoreCase = true) ||
+                                    m.equals("Money Transfer", ignoreCase = true) ||
+                                    m.equals("Account Transfer", ignoreCase = true) ||
+                                    m.equals("Self Transfer", ignoreCase = true) ||
+                                    m.equals("Account", ignoreCase = true) ||
+                                    m.equals("any time", ignoreCase = true) ||
+                                    m.equals("all times", ignoreCase = true)
+                            if (isGeneric) {
+                                "Money Transfer"
+                            } else if (m.startsWith("Transfer to", ignoreCase = true)) {
+                                m
+                            } else {
+                                "Transfer to $m"
+                            }
+                        }
+                        expense.recordType == RecordType.REFUND -> {
+                            val m = expense.merchant.trim()
+                            if (m.isBlank() || m.equals("Refund", ignoreCase = true)) "Refund" else "Refund from $m"
+                        }
+                        expense.direction == TransactionDirection.CREDIT -> {
+                            val m = expense.merchant.trim()
+                            if (m.isBlank() || m.equals("Income", ignoreCase = true) || m.equals("Received", ignoreCase = true)) "Money Received" else "Received from $m"
+                        }
+                        else -> {
+                            val m = expense.merchant.trim()
+                            if (m.equals("any time", ignoreCase = true) || m.equals("all times", ignoreCase = true)) "Expense"
+                            else m.ifBlank { "Expense" }
+                        }
+                    }
+
                     Text(
-                        text = if (expense.recordType == RecordType.TRANSFER && !expense.merchant.startsWith("Transfer", ignoreCase = true)) {
-                            "Transfer to ${expense.merchant.ifBlank { "Account" }}"
-                        } else {
-                            expense.merchant.ifBlank { "Expense" }
-                        },
+                        text = displayTitle,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,

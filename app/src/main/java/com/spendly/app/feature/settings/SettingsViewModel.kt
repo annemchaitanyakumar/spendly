@@ -167,6 +167,34 @@ class SettingsViewModel(
         }
     }
 
+    fun setAiAgentEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAiAgentEnabled(enabled)
+        }
+    }
+
+    fun setGeminiApiKey(key: String) {
+        viewModelScope.launch {
+            settingsRepository.setGeminiApiKey(key)
+        }
+    }
+
+    fun testAiAgent(text: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val key = _uiState.value.settings.geminiApiKey
+            if (key.isBlank()) {
+                onResult("Please enter your Google AI Studio API key first.")
+                return@launch
+            }
+            val res = com.spendly.app.core.ai.AiTransactionAgent.verifyTransaction(key, text)
+            if (res.isTransaction) {
+                onResult("AI Decision: REAL TRANSACTION\nType: ${res.recordType}\nAmount: ${res.amountMinor?.let { "₹${it / 100.0}" } ?: "N/A"}\nMerchant: ${res.merchant}\nReason: ${res.reason}")
+            } else {
+                onResult("AI Decision: IGNORED / NON-TRANSACTION\nReason: ${res.reason}")
+            }
+        }
+    }
+
     fun triggerSimulatedNotification(context: android.content.Context, result: ParserDebugResult) {
         val amount = result.amountMinor ?: 45000L
         val merchant = result.merchant.ifBlank { "Starbucks" }
