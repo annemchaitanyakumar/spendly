@@ -19,6 +19,10 @@ class SpendlyApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         NotificationChannels.createChannels(this)
+        try {
+            val comp = android.content.ComponentName(this, com.spendly.app.core.notifications.SpendlyNotificationListener::class.java)
+            android.service.notification.NotificationListenerService.requestRebind(comp)
+        } catch (_: Exception) {}
         applicationScope.launch {
             container.expenseRepository.ensureCategoriesSeeded()
         }

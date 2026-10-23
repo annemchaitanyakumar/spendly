@@ -49,7 +49,9 @@ object SupportedPackages {
         "com.oppo.mms",                             // Oppo Messages
         "com.android.mms",                          // Standard AOSP / Xiaomi MIUI MMS
         "com.miui.mms",                             // Xiaomi Messages
-        "com.vivo.mms"                              // Vivo / iQOO Messages
+        "com.vivo.mms",                             // Vivo / iQOO Messages
+        "com.truecaller",                           // Truecaller SMS
+        "com.simplemobiletools.sms.messenger"       // Simple SMS
     )
 
     // 2. Email Apps (Bank & Payment confirmation emails)
@@ -66,6 +68,7 @@ object SupportedPackages {
     // 3. Official Bank Apps
     val BANK_PACKAGES = setOf(
         "com.snapwork.hdfc",                        // HDFC Bank
+        "com.hdfcbank.android.now",                 // HDFC Bank Now / PayZapp
         "com.sbi.lotusintouch",                     // SBI YONO
         "com.spandana.yono",                        // SBI YONO Lite
         "com.sbi.SBIFreedomPlus",                   // SBI Anywhere / Freedom
@@ -97,11 +100,19 @@ object SupportedPackages {
     val UPI_PACKAGES = setOf(
         "com.phonepe.app",                          // PhonePe
         "com.google.android.apps.nbu.paisa.user",   // Google Pay
+        "com.google.android.apps.walletnfcrel",     // Google Wallet
         "net.one97.paytm",                          // Paytm
         "in.org.npci.upiapp",                       // BHIM UPI
         "com.dreamplug.androidapp",                 // CRED
+        "com.cred.app",                             // CRED alternate
         "in.amazon.mShop.android.shopping",         // Amazon Pay India
         "com.amazon.mShop.android.shopping",        // Amazon Pay Global
+        "com.whatsapp",                             // WhatsApp Pay
+        "com.samsung.android.spay",                 // Samsung Wallet / Pay
+        "com.samsung.android.raja.spay",            // Samsung Pay India
+        "com.slicepay",                             // Slice UPI
+        "com.fampay.in",                            // FamPay
+        "com.famobi",                               // FamPay alt
         "com.mobikwik_new",                         // MobiKwik
         "com.freecharge.android",                   // Freecharge
         "com.navi.finance",                         // Navi
@@ -123,9 +134,21 @@ object SupportedPackages {
 // ─────────────────────────────────────────────────────────────────────
 
 internal object CommonPatterns {
-    // Amount: ₹1,234.56 or Rs. 1234 or INR 500
+    // Amount: ₹1,234.56 or Rs. 1234 or INR 500 or ₹ 1.00
     val AMOUNT_REGEX = Regex(
-        """(?:₹|Rs\.?\s*|INR\s*|inr\s*)([0-9,]+(?:\.[0-9]{1,2})?)""",
+        """(?:₹\s*|Rs\.?\s*|INR\s*|inr\s*)([0-9,]+(?:\.[0-9]{1,2})?)""",
+        RegexOption.IGNORE_CASE
+    )
+    val SUFFIX_AMOUNT_REGEX = Regex(
+        """([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:₹|Rs\.?|INR|\/-)""",
+        RegexOption.IGNORE_CASE
+    )
+    val VERB_AMOUNT_REGEX = Regex(
+        """(?:paid|debited|spent|transferred|sent|credited)\s+(?:(?:by|for|with|of|amount\s+of)\s+)?(?:₹\s*|Rs\.?\s*|INR\s*)?([0-9,]+(?:\.[0-9]{1,2})?)""",
+        RegexOption.IGNORE_CASE
+    )
+    val PAID_TO_AMOUNT_REGEX = Regex(
+        """(?:paid|sent|transferred)\s+to\s+[A-Za-z0-9 &.'-]{1,30}?\s+(?:₹\s*|Rs\.?\s*|INR\s*)?([0-9,]+(?:\.[0-9]{1,2})?)""",
         RegexOption.IGNORE_CASE
     )
 
@@ -268,11 +291,13 @@ internal object CommonPatterns {
     )
 
     /**
-     * Strict word-boundary matching so words like 'sent' don't match 'essentials' or 'consent'.
+     * Strict word-boundary matching so words like 'sent' don't match 'essentials' or 'consent',
+     * while properly supporting symbols like '₹' and punctuation.
      */
     fun matchesWord(text: String, word: String): Boolean {
         if (!text.contains(word, ignoreCase = true)) return false
-        val pattern = Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE)
+        val escaped = Regex.escape(word)
+        val pattern = Regex("""(?<=^|[\s\p{Punct}])$escaped(?=[\s\p{Punct}]|$)""", RegexOption.IGNORE_CASE)
         return pattern.containsMatchIn(text)
     }
 
@@ -281,7 +306,8 @@ internal object CommonPatterns {
      */
     fun findWordPosition(text: String, word: String): Int {
         if (!text.contains(word, ignoreCase = true)) return -1
-        val pattern = Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE)
+        val escaped = Regex.escape(word)
+        val pattern = Regex("""(?<=^|[\s\p{Punct}])$escaped(?=[\s\p{Punct}]|$)""", RegexOption.IGNORE_CASE)
         return pattern.find(text)?.range?.first ?: -1
     }
 
@@ -373,17 +399,44 @@ internal object CommonPatterns {
     }
 
     fun extractAmount(text: String): Long? {
-        val match = AMOUNT_REGEX.find(text) ?: return null
-        val raw = match.groupValues[1].replace(",", "")
-        return raw.toDoubleOrNull()?.let { (it * 100).toLong() }
+        val prefixMatch = AMOUNT_REGEX.find(text)
+        if (prefixMatch != null) {
+            val raw = prefixMatch.groupValues[1].replace(",", "")
+            val parsed = raw.toDoubleOrNull()?.let { (it * 100).toLong() }
+            if (parsed != null && parsed > 0L) return parsed
+        }
+        val suffixMatch = SUFFIX_AMOUNT_REGEX.find(text)
+        if (suffixMatch != null) {
+            val raw = suffixMatch.groupValues[1].replace(",", "")
+            val parsed = raw.toDoubleOrNull()?.let { (it * 100).toLong() }
+            if (parsed != null && parsed > 0L) return parsed
+        }
+        val verbMatch = VERB_AMOUNT_REGEX.find(text)
+        if (verbMatch != null) {
+            val raw = verbMatch.groupValues[1].replace(",", "")
+            val parsed = raw.toDoubleOrNull()?.let { (it * 100).toLong() }
+            if (parsed != null && parsed > 0L) return parsed
+        }
+        val paidToMatch = PAID_TO_AMOUNT_REGEX.find(text)
+        if (paidToMatch != null) {
+            val raw = paidToMatch.groupValues[1].replace(",", "")
+            val parsed = raw.toDoubleOrNull()?.let { (it * 100).toLong() }
+            if (parsed != null && parsed > 0L) return parsed
+        }
+        return null
     }
 
     fun extractAllAmounts(text: String): List<Long> {
-        return AMOUNT_REGEX.findAll(text)
-            .mapNotNull { match ->
-                match.groupValues[1].replace(",", "").toDoubleOrNull()?.let { (it * 100).toLong() }
+        val results = mutableListOf<Long>()
+        AMOUNT_REGEX.findAll(text).forEach { m ->
+            m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { (it * 100).toLong() }?.let { results.add(it) }
+        }
+        if (results.isEmpty()) {
+            SUFFIX_AMOUNT_REGEX.findAll(text).forEach { m ->
+                m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { (it * 100).toLong() }?.let { results.add(it) }
             }
-            .toList()
+        }
+        return results
     }
 
     fun detectDirection(text: String): TransactionDirection {

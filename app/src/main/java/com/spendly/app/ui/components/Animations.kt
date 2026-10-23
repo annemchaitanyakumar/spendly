@@ -32,7 +32,10 @@ fun Modifier.bouncingClickable(
     )
 
     this
-        .scale(scale)
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
         .clickable(
             interactionSource = interactionSource,
             indication = null,
@@ -58,7 +61,10 @@ fun Modifier.bounceOnPress(
         ),
         label = "bounce_on_press"
     )
-    this.scale(scale)
+    this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
 }
 
 /**

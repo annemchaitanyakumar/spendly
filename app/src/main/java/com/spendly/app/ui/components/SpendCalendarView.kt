@@ -16,8 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -435,8 +435,10 @@ private fun CalendarDayCell(
         modifier = modifier
             .height(54.dp)
             .padding(2.dp)
-            .scale(selectionScale)
-            .bouncingClickable(scaleDown = 0.94f, onClick = onClick),
+            .graphicsLayer {
+                scaleX = selectionScale
+                scaleY = selectionScale
+            },
         shape = RoundedCornerShape(12.dp),
         color = animatedBg,
         border = BorderStroke(1.dp, borderColor)

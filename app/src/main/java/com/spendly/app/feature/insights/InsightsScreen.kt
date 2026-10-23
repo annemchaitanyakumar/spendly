@@ -37,39 +37,27 @@ import kotlin.math.min
 @Composable
 fun InsightsScreen(
     contentPadding: PaddingValues,
-    isNested: Boolean = false,
     viewModel: InsightsViewModel = spendlyViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
-    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarTop, cutoutTop) + 16.dp
+    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarTop, cutoutTop)
 
-    if (isNested) {
-        // When embedded inside another vertically scrollable container (e.g. HomeScreen LazyColumn),
-        // render with a standard Column to prevent IllegalStateException.
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(
+            top = effectiveTopPadding,
+            bottom = contentPadding.calculateBottomPadding(),
+            start = 16.dp,
+            end = 16.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
             InsightsContent(state = state, viewModel = viewModel)
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(
-                top = effectiveTopPadding,
-                bottom = contentPadding.calculateBottomPadding() + 80.dp,
-                start = 16.dp,
-                end = 16.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                InsightsContent(state = state, viewModel = viewModel)
-            }
         }
     }
 }
@@ -307,7 +295,7 @@ private fun InsightCard(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun DailyBarChart(dailyTotals: List<DailySpending>) {
-    val maxTotal = dailyTotals.maxOfOrNull { it.totalMinor } ?: 1L
+    val maxTotal = dailyTotals.maxOfOrNull { it.totalMinor }?.coerceAtLeast(1L) ?: 1L
     val primaryColor = MaterialTheme.colorScheme.primary
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
@@ -326,8 +314,8 @@ private fun DailyBarChart(dailyTotals: List<DailySpending>) {
 
         dailyTotals.forEachIndexed { index, daily ->
             val x = index * (barWidth + spacing) + spacing / 2
-            val barFraction = (daily.totalMinor.toFloat() / maxTotal) * animProgress.value
-            val barHeight = barFraction * maxBarHeight
+            val barFraction = if (maxTotal > 0L) (daily.totalMinor.toFloat() / maxTotal) * animProgress.value else 0f
+            val barHeight = if (barFraction.isFinite()) (barFraction * maxBarHeight).coerceAtLeast(0f) else 0f
             val y = size.height - barHeight
 
             // Background bar
@@ -338,7 +326,7 @@ private fun DailyBarChart(dailyTotals: List<DailySpending>) {
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f)
             )
             // Filled bar
-            if (barHeight > 0) {
+            if (barHeight > 0f && barHeight.isFinite() && y.isFinite()) {
                 drawRoundRect(
                     color = primaryColor,
                     topLeft = Offset(x, y),
@@ -387,26 +375,29 @@ private fun CategoryDonutSection(categories: List<CategorySpending>, total: Long
             val strokeWidth = 24f
             val radius = (min(size.width, size.height) / 2) - strokeWidth
             var startAngle = -90f
+            val safeTotal = total.coerceAtLeast(1L)
 
             categories.forEachIndexed { index, spending ->
-                val fraction = spending.totalMinor.toFloat() / total
-                val sweepAngle = fraction * 360f * animProgress.value
-                drawArc(
-                    color = colors.getOrElse(index) { WarmWhiteMuted },
-                    startAngle = startAngle,
-                    sweepAngle = sweepAngle,
-                    useCenter = false,
-                    topLeft = Offset(
-                        (size.width / 2) - radius,
-                        (size.height / 2) - radius
-                    ),
-                    size = Size(radius * 2, radius * 2),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                        width = strokeWidth,
-                        cap = StrokeCap.Round
+                val fraction = if (safeTotal > 0L) spending.totalMinor.toFloat() / safeTotal else 0f
+                val sweepAngle = if (fraction.isFinite()) fraction * 360f * animProgress.value else 0f
+                if (sweepAngle > 0f && sweepAngle.isFinite()) {
+                    drawArc(
+                        color = colors.getOrElse(index) { WarmWhiteMuted },
+                        startAngle = startAngle,
+                        sweepAngle = sweepAngle,
+                        useCenter = false,
+                        topLeft = Offset(
+                            (size.width / 2) - radius,
+                            (size.height / 2) - radius
+                        ),
+                        size = Size(radius * 2, radius * 2),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
                     )
-                )
-                startAngle += sweepAngle + 2f
+                    startAngle += sweepAngle + 2f
+                }
             }
         }
 

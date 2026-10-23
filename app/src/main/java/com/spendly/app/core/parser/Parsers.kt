@@ -11,10 +11,9 @@ class PhonePeParser : NotificationParser {
     override val name = "PhonePe"
     override val supportedPackages = setOf("com.phonepe.app")
 
-    // e.g. "₹150 paid to Swiggy"
-    // e.g. "₹1,200.00 sent to John via UPI Ref No. 123456789012"
+    // e.g. "₹150 paid to Swiggy" or "Paid ₹1 to Chaithanya" or "₹1,200.00 sent to John via UPI Ref No. 123456789012"
     private val paidToPattern = Regex(
-        """(?:₹|Rs\.?\s*)([0-9,]+(?:\.[0-9]{1,2})?)\s+(?:paid|sent|transferred)\s+to\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,40})""",
+        """(?:(?:₹\s*|Rs\.?\s*|INR\s*)([0-9,]+(?:\.[0-9]{1,2})?)\s+(?:paid|sent|transferred)\s+to|(?:paid|sent|transferred)\s+(?:(?:₹\s*|Rs\.?\s*|INR\s*)([0-9,]+(?:\.[0-9]{1,2})?)\s+to|to))\s+([A-Za-z0-9][A-Za-z0-9 &.'-]{1,40})""",
         RegexOption.IGNORE_CASE
     )
 
@@ -22,23 +21,32 @@ class PhonePeParser : NotificationParser {
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
         if (CommonPatterns.isNonExpenseMessage(fullText)) return null
 
-        val amount = CommonPatterns.extractAmount(fullText)
-        val direction = CommonPatterns.detectDirection(fullText)
-        val rawMerchant = paidToPattern.find(fullText)?.groupValues?.get(2)?.trim()
+        val amount = CommonPatterns.extractAmount(fullText) ?: return null
+        val rawDirection = CommonPatterns.detectDirection(fullText)
+        val direction = if (rawDirection != TransactionDirection.UNKNOWN) rawDirection else {
+            when {
+                fullText.contains("paid", ignoreCase = true) || fullText.contains("sent", ignoreCase = true) || fullText.contains("debited", ignoreCase = true) -> TransactionDirection.DEBIT
+                fullText.contains("received", ignoreCase = true) || fullText.contains("credited", ignoreCase = true) -> TransactionDirection.CREDIT
+                else -> TransactionDirection.UNKNOWN
+            }
+        }
+        val match = paidToPattern.find(fullText)
+        val rawMerchant = match?.groupValues?.get(3)?.trim()?.takeIf { it.isNotBlank() }
+            ?: match?.groupValues?.get(2)?.trim()?.takeIf { it.isNotBlank() }
             ?: CommonPatterns.extractMerchant(fullText)
         val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
         val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
-            hasAmount = amount != null,
+            hasAmount = true,
             directionKnown = direction != TransactionDirection.UNKNOWN,
             recordTypeKnown = recordType != RecordType.UNKNOWN,
             hasMerchant = merchant.isNotEmpty(),
             hasRef = ref != null
         )
 
-        return if (confidence > 0.3f) {
+        return if (confidence >= 0.3f && direction != TransactionDirection.UNKNOWN) {
             ParsedTransaction(
                 amountMinor = amount,
                 direction = direction,
@@ -59,28 +67,38 @@ class PhonePeParser : NotificationParser {
 
 class GooglePayParser : NotificationParser {
     override val name = "Google Pay"
-    override val supportedPackages = setOf("com.google.android.apps.nbu.paisa.user")
+    override val supportedPackages = setOf(
+        "com.google.android.apps.nbu.paisa.user",
+        "com.google.android.apps.walletnfcrel"
+    )
 
     override fun parse(sourcePackage: String, title: String, text: String, bigText: String?): ParsedTransaction? {
         val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
         if (CommonPatterns.isNonExpenseMessage(fullText)) return null
 
-        val amount = CommonPatterns.extractAmount(fullText)
-        val direction = CommonPatterns.detectDirection(fullText)
+        val amount = CommonPatterns.extractAmount(fullText) ?: return null
+        val rawDirection = CommonPatterns.detectDirection(fullText)
+        val direction = if (rawDirection != TransactionDirection.UNKNOWN) rawDirection else {
+            when {
+                fullText.contains("paid", ignoreCase = true) || fullText.contains("sent", ignoreCase = true) || fullText.contains("debited", ignoreCase = true) -> TransactionDirection.DEBIT
+                fullText.contains("received", ignoreCase = true) || fullText.contains("credited", ignoreCase = true) -> TransactionDirection.CREDIT
+                else -> TransactionDirection.UNKNOWN
+            }
+        }
         val rawMerchant = CommonPatterns.extractMerchant(fullText)
         val merchant = CommonPatterns.sanitizeMerchantName(rawMerchant)
         val recordType = CommonPatterns.detectRecordType(fullText, direction, merchant)
         val ref = CommonPatterns.extractRef(fullText)
 
         val confidence = CommonPatterns.calculateConfidence(
-            hasAmount = amount != null,
+            hasAmount = true,
             directionKnown = direction != TransactionDirection.UNKNOWN,
             recordTypeKnown = recordType != RecordType.UNKNOWN,
             hasMerchant = merchant.isNotEmpty(),
             hasRef = ref != null
         )
 
-        return if (confidence > 0.3f) {
+        return if (confidence >= 0.3f && direction != TransactionDirection.UNKNOWN) {
             ParsedTransaction(amount, "INR", direction, recordType, merchant, ref, confidence, fullText, name)
         } else null
     }

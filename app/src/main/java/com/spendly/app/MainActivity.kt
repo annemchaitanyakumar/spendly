@@ -81,6 +81,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        try {
+            val comp = android.content.ComponentName(this, com.spendly.app.core.notifications.SpendlyNotificationListener::class.java)
+            android.service.notification.NotificationListenerService.requestRebind(comp)
+        } catch (_: Exception) {}
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

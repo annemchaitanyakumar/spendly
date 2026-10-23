@@ -89,18 +89,19 @@ fun HomeScreen(
     val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
     val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding) + 16.dp
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(
-            top = effectiveTopPadding,
-            bottom = contentPadding.calculateBottomPadding() + 80.dp,
-            start = 16.dp,
-            end = 16.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(top = effectiveTopPadding)
     ) {
-        // ── Greeting Header ──────────────────────────────────────────
-        item(key = "greeting") {
+        // ── Sticky Header: Greeting, Permission Banner, Tab Switcher ────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             GreetingHeader(
                 year = state.currentYear,
                 month = state.currentMonth,
@@ -109,11 +110,8 @@ fun HomeScreen(
                 canGoNext = viewModel.canGoToNextMonth(),
                 onRefreshAiCopilot = viewModel::refreshAiCopilotTip
             )
-        }
 
-        // ── Notification Listener Banner ──────────────────────────────
-        if (!isNotifListenerEnabled) {
-            item(key = "notif_banner") {
+            if (!isNotifListenerEnabled) {
                 NotificationPermissionBanner(
                     onEnable = {
                         try {
@@ -127,10 +125,8 @@ fun HomeScreen(
                     }
                 )
             }
-        }
 
-        // ── View Switcher: [ Overview | Calendar ] ─────────────────────
-        item(key = "view_tab_switcher") {
+            // ── View Switcher: [ Overview | Calendar | Insights ] ─────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -156,7 +152,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .height(40.dp)
-                            .bouncingClickable(scaleDown = 0.94f) { selectedTab = tab },
+                            .bounceOnPress(scaleDown = 0.94f),
                         shape = RoundedCornerShape(10.dp),
                         color = tabBgColor,
                         border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
@@ -185,169 +181,210 @@ fun HomeScreen(
             }
         }
 
-        // ── AI Financial Copilot Card ─────────────────────────────────
-        if (state.aiCopilotTip != null || state.isGeneratingCopilotTip) {
-            item(key = "ai_copilot_card") {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                Text("AI Financial Copilot", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            }
-                            IconButton(onClick = viewModel::dismissCopilotTip, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Close, "Dismiss", modifier = Modifier.size(16.dp))
-                            }
-                        }
-                        if (state.isGeneratingCopilotTip) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                Text("Analyzing monthly spends with Gemini...", style = MaterialTheme.typography.bodySmall)
-                            }
-                        } else {
-                            Text(
-                                state.aiCopilotTip.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 18.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        Spacer(Modifier.height(10.dp))
 
-        if (selectedTab == HomeViewTab.CALENDAR) {
-            // ── Calendar View ─────────────────────────────────────────
-            item(key = "calendar_view") {
-                SpendCalendarView(
-                    year = state.currentYear,
-                    month = state.currentMonth,
-                    cashFlowDays = state.cashFlowDays,
-                    totalDebitsMinor = state.monthSummary?.totalMinor ?: 0L,
-                    totalCreditsMinor = state.monthSummary?.totalCreditsMinor ?: 0L,
-                    onPrevMonth = viewModel::previousMonth,
-                    onNextMonth = viewModel::nextMonth,
-                    canGoNext = viewModel.canGoToNextMonth(),
-                    onEditExpense = { editingExpenseId = it.id }
-                )
-            }
-        } else if (selectedTab == HomeViewTab.INSIGHTS) {
-            // ── Financial Insights View ──────────────────────────────
-            item(key = "insights_view") {
-                InsightsScreen(contentPadding = PaddingValues(0.dp), isNested = true)
-            }
-        } else {
-            // ── Auto-Detected / Auto-Logged Transaction Cards ─────────
-            if (state.pendingCandidates.isNotEmpty()) {
-                item(key = "pending_header") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+        // ── Tab Content Crossfade ─────────────────────────────────────
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(150))
+            },
+            label = "home_tab_transition",
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) { tab ->
+            when (tab) {
+                HomeViewTab.OVERVIEW -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 4.dp,
+                            bottom = contentPadding.calculateBottomPadding() + 80.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "Auto-Detected Spends",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer
+                        // ── AI Financial Copilot Card ─────────────────────────────────
+                        if (state.aiCopilotTip != null || state.isGeneratingCopilotTip) {
+                            item(key = "ai_copilot_card") {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(18.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                Text("AI Financial Copilot", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                            }
+                                            IconButton(onClick = viewModel::dismissCopilotTip, modifier = Modifier.size(24.dp)) {
+                                                Icon(Icons.Default.Close, "Dismiss", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        if (state.isGeneratingCopilotTip) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                                Text("Analyzing monthly spends with Gemini...", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                        } else {
+                                            Text(
+                                                state.aiCopilotTip.orEmpty(),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                lineHeight = 18.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Auto-Detected / Auto-Logged Transaction Cards ─────────
+                        if (state.pendingCandidates.isNotEmpty()) {
+                            item(key = "pending_header") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            "Auto-Detected Spends",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                text = "${state.pendingCandidates.size}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            items(state.pendingCandidates, key = { "candidate_${it.id}" }) { candidate ->
+                                DetectedExpenseCard(
+                                    candidate = candidate,
+                                    onEdit = { reviewingCandidate = candidate },
+                                    onConfirm = { viewModel.confirmCandidate(candidate) },
+                                    onUndo = { viewModel.undoAutoLoggedExpense(candidate) },
+                                    onDismiss = { viewModel.dismissCandidate(candidate.id) }
+                                )
+                            }
+                        }
+
+                        // ── Monthly Total Card (Purchases, Transfers, Credits, Net) ─
+                        item(key = "monthly_total") {
+                            MonthlyTotalCard(summary = state.monthSummary)
+                        }
+
+                        // ── App-Specified Spends Card ─────────────────────────────
+                        val appSpends = state.monthSummary?.appSpends ?: emptyList()
+                        if (appSpends.isNotEmpty()) {
+                            item(key = "app_spends") {
+                                AppSpendsCard(
+                                    appSpends = appSpends,
+                                    totalSpendsMinor = state.monthSummary?.totalMinor ?: 0L
+                                )
+                            }
+                        }
+
+                        // ── Category Breakdown ────────────────────────────────────
+                        val catBreakdown = state.monthSummary?.categoryBreakdown?.filter { it.totalMinor > 0 }
+                        if (!catBreakdown.isNullOrEmpty()) {
+                            item(key = "category_chart") {
+                                CategoryBreakdownCard(categories = catBreakdown, total = state.monthSummary!!.totalMinor)
+                            }
+                        }
+
+                        // ── Recent Expenses Header ────────────────────────────────
+                        item(key = "recent_header") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "${state.pendingCandidates.size}",
+                                    "Recent Expenses",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Tap any to edit",
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        if (state.recentExpenses.isEmpty()) {
+                            item(key = "empty_state") {
+                                EmptyExpensesState(onAddExpense = onAddExpense)
+                            }
+                        } else {
+                            items(
+                                items = state.recentExpenses,
+                                key = { "expense_${it.id}" }
+                            ) { expense ->
+                                ExpenseListItem(
+                                    expense = expense,
+                                    onClick = { editingExpenseId = it.id }
                                 )
                             }
                         }
                     }
                 }
-                items(state.pendingCandidates, key = { "candidate_${it.id}" }) { candidate ->
-                    DetectedExpenseCard(
-                        candidate = candidate,
-                        onEdit = { reviewingCandidate = candidate },
-                        onConfirm = { viewModel.confirmCandidate(candidate) },
-                        onUndo = { viewModel.undoAutoLoggedExpense(candidate) },
-                        onDismiss = { viewModel.dismissCandidate(candidate.id) }
-                    )
+                HomeViewTab.CALENDAR -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 4.dp,
+                            bottom = contentPadding.calculateBottomPadding() + 80.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item(key = "calendar_view") {
+                            SpendCalendarView(
+                                year = state.currentYear,
+                                month = state.currentMonth,
+                                cashFlowDays = state.cashFlowDays,
+                                totalDebitsMinor = state.monthSummary?.totalMinor ?: 0L,
+                                totalCreditsMinor = state.monthSummary?.totalCreditsMinor ?: 0L,
+                                onPrevMonth = viewModel::previousMonth,
+                                onNextMonth = viewModel::nextMonth,
+                                canGoNext = viewModel.canGoToNextMonth(),
+                                onEditExpense = { editingExpenseId = it.id }
+                            )
+                        }
+                    }
                 }
-            }
-
-            // ── Monthly Total Card (Purchases, Transfers, Credits, Net) ─
-            item(key = "monthly_total") {
-                MonthlyTotalCard(summary = state.monthSummary)
-            }
-
-            // ── App-Specified Spends Card ─────────────────────────────
-            val appSpends = state.monthSummary?.appSpends ?: emptyList()
-            if (appSpends.isNotEmpty()) {
-                item(key = "app_spends") {
-                    AppSpendsCard(
-                        appSpends = appSpends,
-                        totalSpendsMinor = state.monthSummary?.totalMinor ?: 0L
-                    )
-                }
-            }
-
-            // ── Category Breakdown ────────────────────────────────────
-            val catBreakdown = state.monthSummary?.categoryBreakdown?.filter { it.totalMinor > 0 }
-            if (!catBreakdown.isNullOrEmpty()) {
-                item(key = "category_chart") {
-                    CategoryBreakdownCard(categories = catBreakdown, total = state.monthSummary!!.totalMinor)
-                }
-            }
-
-            // ── Recent Expenses Header ────────────────────────────────
-            item(key = "recent_header") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Recent Expenses",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Tap any to edit",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            if (state.recentExpenses.isEmpty()) {
-                item(key = "empty_state") {
-                    EmptyExpensesState(onAddExpense = onAddExpense)
-                }
-            } else {
-                items(
-                    items = state.recentExpenses,
-                    key = { "expense_${it.id}" }
-                ) { expense ->
-                    ExpenseListItem(
-                        expense = expense,
-                        onClick = { editingExpenseId = it.id }
+                HomeViewTab.INSIGHTS -> {
+                    InsightsScreen(
+                        contentPadding = PaddingValues(
+                            top = 4.dp,
+                            bottom = contentPadding.calculateBottomPadding() + 80.dp
+                        )
                     )
                 }
             }

@@ -43,9 +43,9 @@ class SpendlyNotificationListener : NotificationListenerService() {
     // Thread-safe Mutex to prevent concurrency race conditions when PhonePe, SMS, and Email fire concurrently
     private val dedupeMutex = Mutex()
 
-    // Thread-safe Cooldown map: prevent re-prompting the same notification key or fingerprint within 5 minutes
+    // Thread-safe Cooldown map: prevent re-prompting the same notification key or fingerprint within 30 seconds
     private val recentlyProcessed = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val COOLDOWN_MS = 300_000L  // 5 minutes
+    private val COOLDOWN_MS = 30_000L  // 30 seconds window for deduplicating exact same notif/ref
 
     private fun isRecentlyProcessed(key: String): Boolean {
         val now = System.currentTimeMillis()
@@ -89,26 +89,33 @@ class SpendlyNotificationListener : NotificationListenerService() {
         // Check if user disabled this source in app settings
         if (!repository.isSourceEnabled(pkg)) return
 
-        val extras = sbn.notification?.extras ?: return
-        val title = extras.getCharSequence("android.title")?.toString() ?: ""
-        val text = extras.getCharSequence("android.text")?.toString() ?: ""
-        val bigText = extras.getCharSequence("android.bigText")?.toString()
+        val notif = sbn.notification ?: return
+        val extras = notif.extras ?: android.os.Bundle()
 
-        if (title.isBlank() && text.isBlank()) return
+        val extractedTexts = extractAllNotificationTexts(sbn)
+        if (extractedTexts.isEmpty()) return
 
-        val notifKey = sbn.key ?: "${pkg}_${sbn.id}"
-        if (isRecentlyProcessed(notifKey)) return
-        if (repository.findCandidateByNotifKey(notifKey) != null) return
+        val title = extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+            ?: notif.tickerText?.toString() ?: ""
+        val text = extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString() ?: ""
+        val bigText = extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)?.toString()
 
-        val fullText = listOfNotNull(title, text, bigText).joinToString(" ")
+        val fullText = extractedTexts.joinToString(" ")
+        if (fullText.isBlank()) return
 
-        // Parse notification text strictly using parser registry
-        val parsed = parserRegistry.parse(pkg, title, text, bigText) ?: return
+        // Parse notification text strictly using parser registry with full extracted context
+        val parsed = parserRegistry.parse(pkg, title, text, if (bigText.isNullOrBlank()) fullText else bigText)
+            ?: parserRegistry.parse(pkg, "", fullText, null)
+            ?: return
 
         if (parsed.confidence < CONFIDENCE_THRESHOLD) return
         if (parsed.amountMinor == null || parsed.amountMinor <= 0L) return
         if (parsed.direction == TransactionDirection.UNKNOWN) return
         if (parsed.recordType == RecordType.UNKNOWN || parsed.recordType == RecordType.FAILED) return
+
+        val notifKey = sbn.key ?: "${pkg}_${sbn.id}"
+        if (isRecentlyProcessed(notifKey)) return
+        if (repository.findCandidateByNotifKey(notifKey) != null) return
 
         // Optional AI Agent Verification & Professional Formatting (Gemini Free Tier)
         var aiCustomTitle: String? = null
@@ -140,10 +147,13 @@ class SpendlyNotificationListener : NotificationListenerService() {
             Log.w(TAG, "AI Agent check failed; falling back to local engine: ${e.message}")
         }
 
-        val contentFingerprint = "${parsed.amountMinor}_${parsed.transactionRef ?: ""}"
-        if (contentFingerprint.isNotBlank() && isRecentlyProcessed(contentFingerprint)) {
-            Log.d(TAG, "Duplicate fingerprint $contentFingerprint detected, skipping")
-            return
+        val ref = parsed.transactionRef
+        if (!ref.isNullOrBlank() && ref.length >= 6) {
+            val contentFingerprint = "${parsed.amountMinor}_$ref"
+            if (isRecentlyProcessed(contentFingerprint)) {
+                Log.d(TAG, "Duplicate fingerprint $contentFingerprint detected, skipping")
+                return
+            }
         }
 
         val sourceDisplayName = knownAppNames[pkg] ?: when {
@@ -170,8 +180,8 @@ class SpendlyNotificationListener : NotificationListenerService() {
         // ─────────────────────────────────────────────────────────────────
         dedupeMutex.withLock {
             // 1. Transaction Reference Matching (UPI Ref / UTR / RRN / Bank Txn ID)
-            if (!parsed.transactionRef.isNullOrBlank()) {
-                val existingByRef = repository.findByTransactionRef(parsed.transactionRef)
+            if (!parsed.transactionRef.isNullOrBlank() && parsed.transactionRef!!.length >= 6) {
+                val existingByRef = repository.findByTransactionRef(parsed.transactionRef!!)
                 if (existingByRef != null) {
                     Log.d(TAG, "Exact transactionRef ${parsed.transactionRef} already in DB. Enriching and skipping duplicate.")
                     // Enrich merchant if existing was empty
@@ -191,16 +201,16 @@ class SpendlyNotificationListener : NotificationListenerService() {
                 }
             }
 
-            // 2. Cross-Source 5-Minute Time Window Matching (PhonePe + SMS + Email)
-            // If user paid ₹50 on PhonePe, PhonePe notification arrives, then Bank SMS arrives, then Email arrives.
+            // 2. Cross-Source Deduplication (PhonePe + SMS + Email arriving for the same transaction)
+            // STRICT REQUIREMENT: Only deduplicate cross-source if the existing expense came from a DIFFERENT package!
             val recentDuplicate = repository.findRecentDuplicateExpenseAnySource(
                 amountMinor = parsed.amountMinor,
                 transactionAt = System.currentTimeMillis(),
-                windowMs = 300_000L // 5-minute deduplication window
+                windowMs = 30_000L // 30-second deduplication window
             )
 
-            if (recentDuplicate != null) {
-                Log.d(TAG, "Recent duplicate spend of ${parsed.amountMinor} detected within 5-min window across sources. Enriching.")
+            if (recentDuplicate != null && recentDuplicate.sourcePackage != pkg) {
+                Log.d(TAG, "Recent duplicate spend of ${parsed.amountMinor} detected across sources (${recentDuplicate.sourcePackage} -> $pkg). Enriching.")
                 // If the new notification has a transactionRef (e.g. from SMS/Email) and existing didn't, enrich it!
                 if (recentDuplicate.transactionRef.isNullOrBlank() && !parsed.transactionRef.isNullOrBlank()) {
                     repository.updateExpenseMerchantAndRef(
@@ -423,6 +433,62 @@ class SpendlyNotificationListener : NotificationListenerService() {
         "com.pnb.pnbone" to "PNB ONE",
         "com.bankofbaroda.mconnect" to "Bank of Baroda"
     )
+
+    private fun extractAllNotificationTexts(sbn: StatusBarNotification): List<String> {
+        val notif = sbn.notification ?: return emptyList()
+        val extras = notif.extras ?: android.os.Bundle()
+        val texts = mutableListOf<String>()
+
+        // 1. Ticker text
+        notif.tickerText?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+
+        // 2. Standard extras
+        extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_TITLE_BIG)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_SUB_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_INFO_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        extras.getCharSequence(android.app.Notification.EXTRA_SUMMARY_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+
+        // 3. Text lines (InboxStyle)
+        val lines = extras.getCharSequenceArray(android.app.Notification.EXTRA_TEXT_LINES)
+        if (lines != null) {
+            for (line in lines) {
+                line?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+            }
+        }
+
+        // 4. MessagingStyle messages (Used by Google Messages, Samsung Messages, Vivo MMS, WhatsApp, etc.)
+        val rawMessages = extras.getParcelableArray(android.app.Notification.EXTRA_MESSAGES)
+        if (rawMessages != null) {
+            for (item in rawMessages) {
+                if (item is android.os.Bundle) {
+                    item.getCharSequence("text")?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+                    item.getCharSequence("sender")?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+                }
+            }
+        }
+
+        // Support Jetpack MessagingStyle extraction
+        try {
+            val messagingStyle = androidx.core.app.NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notif)
+            if (messagingStyle != null) {
+                for (m in messagingStyle.messages) {
+                    m.text?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+                    m.person?.name?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 5. Public version (if device masked private content)
+        notif.publicVersion?.extras?.let { pubExtras ->
+            pubExtras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+            pubExtras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+        }
+
+        return texts.distinct()
+    }
 
     override fun onCreate() {
         super.onCreate()
