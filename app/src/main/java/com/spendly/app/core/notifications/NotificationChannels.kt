@@ -14,7 +14,7 @@ import com.spendly.app.R
 import com.spendly.app.core.common.CurrencyFormatter
 
 object NotificationChannels {
-    const val DETECTION_CHANNEL_ID = "spendly_detection_v3"
+    const val DETECTION_CHANNEL_ID = "spendly_detection_v4"
     const val DETECTION_CHANNEL_NAME = "Spend Detections"
 
     fun createChannels(context: Context) {
@@ -22,7 +22,7 @@ object NotificationChannels {
         val channel = NotificationChannel(
             DETECTION_CHANNEL_ID,
             DETECTION_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Status bar and drawer notifications for auto-recorded payments, transfers, and credits"
             enableVibration(true)
@@ -203,7 +203,9 @@ object ExpenseNotificationHelper {
             .setCustomBigContentView(expandedViews)
             .setContentIntent(openPending)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(0xFF000000.toInt())
+            .setColorized(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 

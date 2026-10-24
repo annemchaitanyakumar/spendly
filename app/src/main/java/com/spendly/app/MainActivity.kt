@@ -215,10 +215,17 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
             floatingActionButton = {},
             contentWindowInsets = WindowInsets.safeDrawing
         ) { padding ->
+            val topBarPadding = padding.calculateTopPadding()
+            val screenPadding = PaddingValues(
+                top = 16.dp,
+                bottom = padding.calculateBottomPadding()
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
+                    .padding(top = topBarPadding)
             ) {
                 AnimatedContent(
                     targetState = currentDest,
@@ -246,7 +253,7 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                 ) { dest ->
                     when (dest) {
                         NavDest.Home -> HomeScreen(
-                            contentPadding = padding,
+                            contentPadding = screenPadding,
                             onAddExpense = {
                                 expenseIdToEdit = null
                                 showAddExpense = true
@@ -254,7 +261,7 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                             snackbarHostState = snackbarHostState
                         )
                         NavDest.Notes -> NotesScreen(
-                            contentPadding = padding,
+                            contentPadding = screenPadding,
                             onAddExpense = {
                                 expenseIdToEdit = null
                                 showAddExpense = true
@@ -268,7 +275,7 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                             onClearInitialImportText = { notesSharedTextToImport = null }
                         )
                         NavDest.Transactions -> TransactionsScreen(
-                            contentPadding = padding,
+                            contentPadding = screenPadding,
                             onAddExpense = {
                                 expenseIdToEdit = null
                                 showAddExpense = true
@@ -276,10 +283,10 @@ fun SpendlyApp(mainVm: MainViewModel = spendlyViewModel()) {
                             snackbarHostState = snackbarHostState
                         )
                         NavDest.Insights -> InsightsScreen(
-                            contentPadding = padding
+                            contentPadding = screenPadding
                         )
                         NavDest.Settings -> SettingsScreen(
-                            contentPadding = padding,
+                            contentPadding = screenPadding,
                             snackbarHostState = snackbarHostState
                         )
                     }

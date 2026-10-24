@@ -40,16 +40,12 @@ fun InsightsScreen(
     viewModel: InsightsViewModel = spendlyViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
-    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarTop, cutoutTop)
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            top = effectiveTopPadding,
+            top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding(),
             start = 16.dp,
             end = 16.dp

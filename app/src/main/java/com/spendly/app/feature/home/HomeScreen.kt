@@ -85,15 +85,11 @@ fun HomeScreen(
         return
     }
 
-    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
-    val effectiveTopPadding = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding) + 16.dp
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(top = effectiveTopPadding)
+            .padding(top = contentPadding.calculateTopPadding())
     ) {
         // ── Sticky Header: Greeting, Permission Banner, Tab Switcher ────────
         Column(

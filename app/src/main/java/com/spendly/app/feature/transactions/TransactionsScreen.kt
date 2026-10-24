@@ -50,18 +50,11 @@ fun TransactionsScreen(
         }
     }
 
-    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
-    val effectiveTop = maxOf(contentPadding.calculateTopPadding(), statusBarPadding, cutoutPadding)
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(
-                top = effectiveTop,
-                bottom = contentPadding.calculateBottomPadding()
-            )
+            .padding(bottom = contentPadding.calculateBottomPadding())
     ) {
         // ── Top bar ─────────────────────────────────────────────────
         TopAppBar(
